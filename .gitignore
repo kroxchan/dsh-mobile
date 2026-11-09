@@ -1,0 +1,29 @@
+﻿# local secrets / runtime
+config.json
+gateway.log
+stdout.log
+stderr.log
+tunnel.log
+tunnel.out.log
+gateway.pid
+state-cache.json
+server.mjs.bak-*
+
+# dev tooling / browser profiles / raw screenshots
+tools/.chrome*/
+prototype/shots/
+node_modules/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# 与本项目无关的脚本 / 本机验证工具
+prototype/make-*.py
+tools/
+
+# 内部设计/排查文档与截图（不入公开仓库）
+DESIGN.md
+FEATURE-MAP.md
+PUSH-ISSUE.md
+docs/

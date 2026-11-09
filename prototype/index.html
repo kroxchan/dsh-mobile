@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>KPAO · 手机端 IM 原型</title>
+<!-- 关键 1：锁定比例。maximum-scale/minimum-scale + user-scalable=no；iOS Safari 还会忽略这里，所以 JS 里再拦手势 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#f2f3f6" id="metaTheme">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="KPAO">
+<meta name="format-detection" content="telephone=no">
+<meta name="color-scheme" content="light dark">
+<style>
+  html,
+  body {
+    margin: 0;
+    background: #f7f6f3;
+    color: #2b2925;
+  }
+  #boot {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: #f7f6f3;
+    color: #3d3a35;
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+    transition: opacity 0.32s ease;
+  }
+  #boot .boot-mark {
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    color: #2b2925;
+  }
+  #boot .boot-mark span {
+    color: #c15f3c;
+  }
+  #boot .boot-sub {
+    font-size: 13px;
+    color: #8a857d;
+  }
+  #boot .boot-dots {
+    display: flex;
+    gap: 5px;
+    margin-top: 2px;
+  }
+  #boot .boot-dots i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #c9c4bb;
+    animation: bootPulse 1.2s infinite ease-in-out;
+  }
+  #boot .boot-dots i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  #boot .boot-dots i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  @keyframes bootPulse {
+    0%,
+    80%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    40% {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
+  #boot .boot-note {
+    font-size: 12px;
+    color: #a39d94;
+    min-height: 18px;
+  }
+  #boot .boot-retry {
+    margin-top: 4px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    border: 0.5px solid #d8d2c9;
+    background: transparent;
+    color: #3d3a35;
+    font: inherit;
+    font-size: 13px;
+  }
+  #boot .boot-retry:active {
+    background: #efece6;
+  }
+  #boot .boot-version {
+    position: absolute;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    font-size: 11px;
+    color: #b5afa6;
+    letter-spacing: 0.02em;
+  }
+  @media (prefers-color-scheme: dark) {
+    html,
+    body,
+    #boot {
+      background: #1b1a18;
+      color: #ecebe8;
+    }
+    #boot .boot-mark {
+      color: #ecebe8;
+    }
+    #boot .boot-sub {
+      color: #8f8a82;
+    }
+    #boot .boot-note {
+      color: #7d7871;
+    }
+    #boot .boot-retry {
+      border-color: #3a3833;
+      color: #ecebe8;
+    }
+    #boot .boot-retry:active {
+      background: #262420;
+    }
+  }
+</style>
+<link rel="preload" href="styles.css?v=20261104z" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<link rel="preload" href="theme-flat.css?v=20261104z" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript>
+  <link rel="stylesheet" href="styles.css?v=20261104z">
+  <link rel="stylesheet" href="theme-flat.css?v=20261104z">
+</noscript>
+<script>
+  (function () {
+    var ready = false;
+    function hide() {
+      var boot = document.getElementById("boot");
+      if (!boot) return;
+      boot.style.opacity = "0";
+      setTimeout(function () {
+        var el = document.getElementById("boot");
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      }, 320);
+    }
+    function problem(text) {
+      if (ready) return;
+      var note = document.getElementById("bootNote");
+      var retry = document.getElementById("bootRetry");
+      if (note && text) note.textContent = text;
+      if (retry) retry.hidden = false;
+    }
+    window.__kpaoBootReady = function () {
+      if (new URLSearchParams(location.search).get("boot") === "1") return;
+      ready = true;
+      hide();
+    };
+    window.__kpaoHeartbeat = function () {
+      window.__kpaoLastBeat = Date.now();
+    };
+    window.addEventListener(
+      "error",
+      function () {
+        problem("加载出错了，点下面重新加载");
+      },
+      true
+    );
+    window.addEventListener("unhandledrejection", function () {
+      problem("加载出错了，点下面重新加载");
+    });
+    setTimeout(function () {
+      problem("网络有点慢，可以点下面重新加载");
+    }, 6000);
+    setTimeout(function () {
+      if (!ready) problem("还是没连上，点下面重新加载");
+    }, 12000);
+    document.addEventListener("DOMContentLoaded", function () {
+      var version = document.getElementById("bootVersion");
+      if (version) {
+        var search = new URLSearchParams(location.search);
+        version.textContent = search.get("v") ? "v" + search.get("v") : "";
+      }
+      var retry = document.getElementById("bootRetry");
+      if (retry) {
+        retry.addEventListener("click", function () {
+          var params = new URLSearchParams(location.search);
+          location.replace(
+            location.pathname +
+              "?v=" +
+              encodeURIComponent(params.get("v") || "") +
+              "&r=" +
+              Date.now() +
+              location.hash
+          );
+        });
+      }
+    });
+    // 页面已起来但长时间没有任何心跳：自动重载一次（5 分钟内最多一次）
+    setInterval(function () {
+      if (!ready || document.visibilityState !== "visible") return;
+      var last = window.__kpaoLastBeat || 0;
+      if (last === 0 || Date.now() - last < 120000) return;
+      var at = 0;
+      try {
+        at = Number(localStorage.getItem("kpao-auto-reload") || 0);
+      } catch {}
+      if (Date.now() - at < 300000) return;
+      try {
+        localStorage.setItem("kpao-auto-reload", String(Date.now()));
+      } catch {}
+      location.reload();
+    }, 15000);
+  })();
+</script>
+</head>
+<body>
+<div id="boot" aria-hidden="true">
+  <div class="boot-mark">KPAO<span>.</span></div>
+  <div class="boot-sub">正在连接你的工作区…</div>
+  <div class="boot-dots"><i></i><i></i><i></i></div>
+  <div class="boot-note" id="bootNote"></div>
+  <button class="boot-retry" id="bootRetry" hidden>重新加载</button>
+  <div class="boot-version" id="bootVersion"></div>
+</div>
+
+<!-- ============ 图标 sprite ============ -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.4a8.3 8.3 0 0 1-8.5 8.2 9 9 0 0 1-3.6-.75L3.2 21l1.9-5a7.9 7.9 0 0 1-1-3.9A8.3 8.3 0 0 1 12.5 4 8.3 8.3 0 0 1 21 11.4Z"/></symbol>
+  <symbol id="i-contacts" viewBox="0 0 24 24"><circle cx="9.2" cy="8.2" r="3.1"/><path d="M3 20c.55-3.35 3.1-5.4 6.2-5.4s5.65 2.05 6.2 5.4"/><path d="M16.2 5.5a3.1 3.1 0 0 1 0 5.7"/><path d="M18.4 14.8c1.9.65 3.1 2.35 3.5 4.9"/></symbol>
+  <symbol id="i-me" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M4.8 20c.7-3.9 3.6-6.2 7.2-6.2s6.5 2.3 7.2 6.2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4"/><path d="M20 20l-4.2-4.2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.8 5.2 7.9 12l6.9 6.8"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M4.2 11.8 20 4.5l-6.6 15-2.7-6.1-6.5-1.6Z"/><path d="M10.7 13.4 20 4.5"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9.2 4h5.6l-.7 5.1 3 3.1v1.6H6.9v-1.6l3-3.1L9.2 4Z"/><path d="M12 13.8V21"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9.3 5.8 15.5 12l-6.2 6.2"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M13.5 3.5H6.8a1.6 1.6 0 0 0-1.6 1.6v13.8a1.6 1.6 0 0 0 1.6 1.6h10.4a1.6 1.6 0 0 0 1.6-1.6V8.4l-4.9-4.9Z"/><path d="M13.5 3.5v4.9h4.9"/><path d="M8.6 13h6.8M8.6 16.4h4.6"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.6 7.4a1.7 1.7 0 0 1 1.7-1.7h4l1.7 2h8.1a1.7 1.7 0 0 1 1.7 1.7v8.2a1.7 1.7 0 0 1-1.7 1.7H5.3a1.7 1.7 0 0 1-1.7-1.7V7.4Z"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect x="4.2" y="4.2" width="15.6" height="15.6" rx="3.2"/><path d="M8.2 12.2l2.6 2.6 5-5.4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.6 19 6v5.4c0 4.2-2.8 7.3-7 9-4.2-1.7-7-4.8-7-9V6l7-2.4Z"/><path d="M9.2 12.1l2 2 3.7-4"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M4 7h9M18.5 7H20M4 12h3.5M13 12h7M4 17h9M18.5 17H20"/><circle cx="15.5" cy="7" r="2.1"/><circle cx="10" cy="12" r="2.1"/><circle cx="15.5" cy="17" r="2.1"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M17.8 10.4a5.8 5.8 0 1 0-11.6 0c0 4-1.4 5.5-1.4 5.5h14.4s-1.4-1.5-1.4-5.5Z"/><path d="M10.2 19a2 2 0 0 0 3.6 0"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.4A8.4 8.4 0 0 1 9.6 4a8.4 8.4 0 1 0 10.4 10.4Z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 11v6"/><circle cx="12" cy="7.9" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.4 6.4l11.2 11.2M17.6 6.4 6.4 17.6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.4 12.6l4.2 4.2 9-9.6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.8"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="M5.8 9.3 12 15.5l6.2-6.2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.6" y="10.2" width="14.8" height="10.2" rx="3"/><path d="M8.1 10.2V7.6a3.9 3.9 0 0 1 7.8 0v2.6"/><circle cx="12" cy="15.2" r="1.2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M7 9l3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-browser" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M3 9h18"/><circle cx="6.4" cy="6.7" r="0.9" fill="currentColor" stroke="none"/><circle cx="9.2" cy="6.7" r="0.9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-plan" viewBox="0 0 24 24"><path d="M6 3.6v17"/><path d="M6 5h11l-2.2 3.4L17 12H6"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24"><rect x="3" y="4" width="6.4" height="5" rx="1.6"/><rect x="14.6" y="15" width="6.4" height="5" rx="1.6"/><path d="M9.4 6.5h2.6a3.6 3.6 0 0 1 3.6 3.6V15"/></symbol>
+  <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 4v10.5M8 10.8l4 3.7 4-3.7"/><path d="M5 19.5h14"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.6 2.4 2.6 14.6 0 17M12 3.5c-2.6 2.4-2.6 14.6 0 17"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="3.2"/><path d="M12 7V4"/><path d="M8.6 12.6h.01M15.4 12.6h.01"/><path d="M9 16h6"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3.2"/><path d="M11.2 12H20M17 12v3.2M14.4 12v2.2"/></symbol>
+  <symbol id="i-usage" viewBox="0 0 24 24"><path d="M4 19.4V4.6M4 19.4h16"/><path d="M8 16v-4.5M12 16V7.5M16 16v-6.5"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M18.5 7H20M4 12h3.5M13 12h7M4 17h9M18.5 17H20"/><circle cx="15.5" cy="7" r="2.1"/><circle cx="10" cy="12" r="2.1"/><circle cx="15.5" cy="17" r="2.1"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5Z"/><path d="M18.6 16.4l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8.8-2.1Z"/></symbol>
+</svg>
+
+<div class="stage">
+  <div id="app" class="app">
+
+    <!-- ============================ 消息列表 ============================ -->
+    <section class="page is-active" id="page-chats" data-page="chats" aria-label="消息">
+      <header class="nav">
+        <h1 class="nav-title">消息</h1>
+        <div class="nav-actions">
+          <button class="icon-btn" data-act="focus-chat-search" aria-label="搜索消息">
+            <svg class="ic"><use href="#i-search"/></svg>
+          </button>
+          <button class="icon-btn" data-act="new-chat" aria-label="新建对话">
+            <svg class="ic"><use href="#i-plus"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="compose-top">
+        <button class="compose-target" id="composeTarget" aria-label="选择发送对象">
+          <span class="compose-target-name">选择</span>
+          <svg class="ic"><use href="#i-chev-down"/></svg>
+        </button>
+        <input id="quickInput" type="text" placeholder="发消息…" autocomplete="off" enterkeyhint="send">
+        <button class="compose-send" id="quickSend" disabled aria-label="发送">
+          <svg class="ic"><use href="#i-send"/></svg>
+        </button>
+      </div>
+
+      <div class="search-row">
+        <label class="search">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input id="chatSearch" type="search" placeholder="搜索 Bot 或消息" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button class="search-clear" id="chatSearchClear" hidden aria-label="清空">
+            <svg class="ic"><use href="#i-close"/></svg>
+          </button>
+        </label>
+      </div>
+
+      <div class="scroll" id="chatList"></div>
+    </section>
+
+    <!-- ============================ 通讯录 ============================ -->
+    <section class="page" id="page-contacts" data-page="contacts" aria-label="通讯录">
+      <header class="nav">
+        <h1 class="nav-title">通讯录</h1>
+        <div class="nav-actions">
+          <button class="icon-btn" data-act="new-agent" aria-label="添加 agent">
+            <svg class="ic"><use href="#i-plus"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="search-row">
+        <label class="search">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input id="contactSearch" type="search" placeholder="搜索 Bot、岗位或部门" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button class="search-clear" id="contactSearchClear" hidden aria-label="清空">
+            <svg class="ic"><use href="#i-close"/></svg>
+          </button>
+        </label>
+      </div>
+
+      <div class="scroll" id="contactList"></div>
+    </section>
+
+    <!-- ============================ 我的 ============================ -->
+    <section class="page" id="page-me" data-page="me" aria-label="我的">
+      <header class="nav">
+        <h1 class="nav-title">我的</h1>
+        <div class="nav-actions">
+          <button class="icon-btn" data-act="settings" aria-label="设置">
+            <svg class="ic"><use href="#i-gear"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="scroll me-scroll" id="meScroll">
+        <div class="profile-card">
+          <div class="avatar avatar-xl avatar-self"><span>K</span></div>
+          <div class="profile-info">
+            <h2>Owner</h2>
+            <p>KPAO · 最高决策者</p>
+          </div>
+          <span class="owner-chip">Owner</span>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat"><b>12</b><span>Bots</span></div>
+          <div class="stat-sep"></div>
+          <div class="stat"><b>25</b><span>任务</span></div>
+          <div class="stat-sep"></div>
+          <div class="stat"><b>6</b><span>今日完成</span></div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">组织</div>
+          <div class="group-card">
+            <button class="menu-row" data-act="toast" data-toast="组织章程 · 原型占位">
+              <span class="menu-ic ic-lead"><svg class="ic"><use href="#i-doc"/></svg></span>
+              <span class="menu-label">组织章程</span><span class="menu-value">v1.1</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="toast" data-toast="任务板 · 原型占位">
+              <span class="menu-ic ic-project"><svg class="ic"><use href="#i-task"/></svg></span>
+              <span class="menu-label">任务板</span><span class="menu-value">3 进行中</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="toast" data-toast="知识库 · 原型占位">
+              <span class="menu-ic ic-research"><svg class="ic"><use href="#i-folder"/></svg></span>
+              <span class="menu-label">知识库</span><span class="menu-value">7 篇</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="toast" data-toast="决策记录 · 原型占位">
+              <span class="menu-ic ic-content"><svg class="ic"><use href="#i-shield"/></svg></span>
+              <span class="menu-label">决策记录</span><span class="menu-value">A-01 ~ A-09</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">设置</div>
+          <div class="group-card">
+            <button class="menu-row" data-act="sessions">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-chat"/></svg></span>
+              <span class="menu-label">会话管理</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="reload">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-clock"/></svg></span>
+              <span class="menu-label">重新加载页面</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="billing">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-usage"/></svg></span>
+              <span class="menu-label">用量与充值</span>
+              <span class="menu-value" id="balanceShort">—</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="settings">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-settings"/></svg></span>
+              <span class="menu-label">全部设置<span class="menu-sub">账号 / 模型 / 插件 / 快捷键</span></span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="theme">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-moon"/></svg></span>
+              <span class="menu-label">外观</span>
+              <span class="menu-value" id="themeValue">跟随系统</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <div class="menu-row as-row">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-lock"/></svg></span>
+              <span class="menu-label">锁定比例<span class="menu-sub">禁止双指缩放 / 双击放大</span></span>
+              <button class="switch is-on" id="zoomSwitch" role="switch" aria-checked="true" aria-label="锁定缩放"><i></i></button>
+            </div>
+            <div class="menu-row as-row">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-bell"/></svg></span>
+              <span class="menu-label">Bot 完成时通知<span class="menu-sub">原型占位</span></span>
+              <button class="switch" role="switch" aria-checked="false" aria-label="通知" data-act="toast" data-toast="通知需要系统级权限，正式版再接"><i></i></button>
+            </div>
+            <button class="menu-row" data-act="design-note">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-info"/></svg></span>
+              <span class="menu-label">设计说明</span>
+              <span class="menu-value">v0.3</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="features">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-flow"/></svg></span>
+              <span class="menu-label">功能清单<span class="menu-sub">当前界面所有功能 → 新位置</span></span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <p class="version">KPAO 手机端 v0.5 · <span id="dataSource">连接中…</span><br>真实数据来自本机 DSH，仅手机网关可见</p>
+        <div class="me-bottom-space"></div>
+      </div>
+    </section>
+
+    <!-- ============================ 底部 Tab ============================ -->
+    <nav class="tabbar" aria-label="主导航">
+      <button class="tab is-active" data-tab="chats" aria-label="消息">
+        <span class="tab-ic"><svg class="ic"><use href="#i-chat"/></svg><i class="tab-badge" id="tabBadge">7</i></span>
+        <span class="tab-label">消息</span>
+      </button>
+      <button class="tab" data-tab="contacts" aria-label="通讯录">
+        <span class="tab-ic"><svg class="ic"><use href="#i-contacts"/></svg></span>
+        <span class="tab-label">通讯录</span>
+      </button>
+      <button class="tab" data-tab="me" aria-label="我的">
+        <span class="tab-ic"><svg class="ic"><use href="#i-me"/></svg></span>
+        <span class="tab-label">我的</span>
+      </button>
+    </nav>
+
+    <!-- ============================ 聊天框（覆盖层） ============================ -->
+    <section class="chat-view" id="chatView" aria-hidden="true" aria-label="聊天">
+      <header class="chat-nav">
+        <button class="icon-btn back" data-act="chat-back" aria-label="返回">
+          <svg class="ic"><use href="#i-back"/></svg>
+        </button>
+        <div class="chat-id" data-act="chat-members" role="button" tabindex="0" aria-label="查看会话成员">
+          <div class="avatar avatar-sm" id="chatAvatar"></div>
+          <div class="chat-id-text">
+            <div class="chat-name" id="chatName">—</div>
+            <div class="chat-status" id="chatStatus">—</div>
+          </div>
+        </div>
+        <button class="icon-btn" data-act="chat-more" aria-label="更多">
+          <svg class="ic"><use href="#i-more"/></svg>
+        </button>
+      </header>
+
+      <input id="imageInput" type="file" accept="image/*" hidden>
+      <div class="chat-scroll" id="chatScroll"></div>
+
+      <div class="live-typing" id="liveTyping" hidden>
+        <span class="typing-dots"><i></i><i></i><i></i></span>
+        <span class="live-typing-main">
+          <span id="liveTypingText">思考中…</span>
+          <span id="liveTypingMeta" class="live-typing-meta" hidden></span>
+        </span>
+      </div>
+
+      <div class="approval-bar" id="approvalBar" hidden>有审批待处理 · 查看</div>
+      <div class="card-dock" id="cardDock" hidden></div>
+
+      <div class="composer">
+        <div class="pending-image" id="pendingImage" hidden>
+          <img id="pendingImageThumb" alt="待发送图片">
+          <span class="pending-image-text">图片已就绪，可加文字一起发</span>
+          <button class="pending-image-remove" data-act="clear-image" aria-label="移除图片">
+            <svg class="ic"><use href="#i-close"/></svg>
+          </button>
+        </div>
+        <div class="quick-row" id="quickRow"></div>
+        <div class="composer-bar">
+          <button class="icon-btn round" data-act="composer-plus" aria-label="更多功能">
+            <svg class="ic"><use href="#i-plus"/></svg>
+          </button>
+          <div class="input-wrap">
+            <textarea id="composerInput" rows="1" placeholder="发消息…" enterkeyhint="send" autocomplete="off"></textarea>
+          </div>
+          <button class="stop-btn" id="stopBtn" hidden aria-label="中断任务">
+            <svg class="ic"><use href="#i-stop"/></svg>
+          </button>
+          <button class="send-btn" id="sendBtn" disabled aria-label="发送">
+            <svg class="ic"><use href="#i-send"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div class="image-viewer" id="imageViewer" hidden aria-label="查看图片">
+      <button class="image-viewer-close" data-act="close-image" aria-label="关闭">
+        <svg class="ic"><use href="#i-close"/></svg>
+      </button>
+      <img id="imageViewerImg" alt="查看图片">
+      <span class="image-viewer-hint">点击任意处关闭</span>
+    </div>
+
+    <!-- ============================ 底部弹层 ============================ -->
+    <div class="sheet-layer" id="sheetLayer" hidden>
+      <div class="sheet-backdrop" data-act="sheet-close"></div>
+      <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <p class="stage-meta">移动端交互原型 · 390 × 844 · 比例已锁定</p>
+</div>
+
+<script src="data.js?v=20261104z"></script>
+<script src="app.js?v=20261104z"></script>
+</body>
+</html>

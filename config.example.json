@@ -1,0 +1,8 @@
+﻿{
+  "listenPort": 19000,
+  "upstreamPort": 61324,
+  "passSalt": "replace-with-64-hex-chars",
+  "passHash": "replace-with-128-hex-chars",
+  "gateSecret": "replace-with-base64url-secret",
+  "createdAt": "2026-01-01T00:00:00.000Z"
+}

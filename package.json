@@ -1,0 +1,12 @@
+﻿{
+  "name": "dsh-mobile",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Mobile web frontend + LAN/tunnel gateway for DeepSeek Harness (DSH)",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "setup": "node setup.mjs",
+    "start": "node server.mjs"
+  }
+}
