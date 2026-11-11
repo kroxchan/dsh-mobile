@@ -125,11 +125,11 @@
     }
   }
 </style>
-<link rel="preload" href="styles.css?v=20261104z" as="style" onload="this.onload=null;this.rel='stylesheet'">
-<link rel="preload" href="theme-flat.css?v=20261104z" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<link rel="preload" href="styles.css?v=20261109a" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<link rel="preload" href="theme-flat.css?v=20261109a" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <noscript>
-  <link rel="stylesheet" href="styles.css?v=20261104z">
-  <link rel="stylesheet" href="theme-flat.css?v=20261104z">
+  <link rel="stylesheet" href="styles.css?v=20261109a">
+  <link rel="stylesheet" href="theme-flat.css?v=20261109a">
 </noscript>
 <script>
   (function () {
@@ -523,6 +523,21 @@
       <span class="image-viewer-hint">点击任意处关闭</span>
     </div>
 
+    <div class="file-viewer" id="fileViewer" hidden aria-label="查看文件">
+      <div class="file-viewer-panel">
+        <header class="file-viewer-head">
+          <div class="file-viewer-title" id="fileViewerTitle">文件</div>
+          <button class="file-viewer-close" data-act="close-file" aria-label="关闭">
+            <svg class="ic"><use href="#i-close"/></svg>
+          </button>
+        </header>
+        <div class="file-viewer-body" id="fileViewerBody"></div>
+        <footer class="file-viewer-foot">
+          <a class="btn" id="fileViewerRaw" href="#" target="_blank" rel="noreferrer noopener">下载 / 打开原文件</a>
+        </footer>
+      </div>
+    </div>
+
     <!-- ============================ 底部弹层 ============================ -->
     <div class="sheet-layer" id="sheetLayer" hidden>
       <div class="sheet-backdrop" data-act="sheet-close"></div>
@@ -535,7 +550,7 @@
   <p class="stage-meta">移动端交互原型 · 390 × 844 · 比例已锁定</p>
 </div>
 
-<script src="data.js?v=20261104z"></script>
-<script src="app.js?v=20261104z"></script>
+<script src="data.js?v=20261109a"></script>
+<script src="app.js?v=20261109a"></script>
 </body>
 </html>

@@ -1321,3 +1321,128 @@ body {
   overflow-wrap: anywhere;
   word-break: break-all;
 }
+
+/* 文件 / 产物查看器 */
+.file-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 71;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.file-viewer[hidden] {
+  display: none !important;
+}
+.file-viewer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.file-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+  border-bottom: 0.5px solid var(--hair);
+  background: var(--surface);
+}
+.file-viewer-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-viewer-close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 0.5px solid var(--hair);
+  background: transparent;
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+.file-viewer-close .ic {
+  width: 17px;
+  height: 17px;
+}
+.file-viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 16px calc(18px + env(safe-area-inset-bottom));
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.file-viewer-body h1,
+.file-viewer-body h2,
+.file-viewer-body h3 {
+  font-weight: 500;
+  line-height: 1.35;
+  margin: 16px 0 8px;
+}
+.file-viewer-body h1 {
+  font-size: 20px;
+}
+.file-viewer-body h2 {
+  font-size: 17px;
+}
+.file-viewer-body h3 {
+  font-size: 15px;
+}
+.file-viewer-body p {
+  margin: 8px 0;
+}
+.file-viewer-body ul,
+.file-viewer-body ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.file-viewer-body pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--surface-2);
+  border: 0.5px solid var(--hair);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.file-viewer-body code {
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.file-viewer-body table {
+  border-collapse: collapse;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+.file-viewer-body th,
+.file-viewer-body td {
+  border: 0.5px solid var(--hair);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.file-viewer-foot {
+  padding: 10px 14px calc(14px + env(safe-area-inset-bottom));
+  border-top: 0.5px solid var(--hair);
+  background: var(--surface);
+}
+.file-viewer-foot .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}

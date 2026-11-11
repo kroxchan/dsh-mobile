@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261104z";
+const PROTO_VERSION = "20261109a";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -697,6 +697,32 @@ function annotateImages(items) {
   });
 }
 
+/** DSH `present` 工具产生的产物卡片：转成手机端可点击查看的文件消息。 */
+function deliverableItems(event) {
+  const files = Array.isArray(event.data?.files) ? event.data.files : [];
+  return files
+    .map((file, index) => ({
+      id: "d" + event.seq + "-" + index,
+      kind: "file",
+      title: typeof file?.path === "string" ? path.basename(file.path) : "产物",
+      path: typeof file?.path === "string" ? file.path : "",
+      description: typeof file?.description === "string" ? file.description : "",
+      time: event.time ?? null,
+      seq: event.seq,
+    }))
+    .filter((item) => item.path !== "");
+}
+
+function deliverablesFromSession(sessionId) {
+  const data = readSessionData(sessionId);
+  if (data === null) return [];
+  const out = [];
+  for (const event of data.events) {
+    if (event.type === "deliverables/presented") out.push(...deliverableItems(event));
+  }
+  return out.slice(-20);
+}
+
 /** 普通 DSH 会话当前是否在跑：看最后的 turn/start、turn/end 和 tool/call。 */
 function sessionLiveStatus(sessionId) {
   const data = readSessionData(sessionId);
@@ -758,6 +784,8 @@ function dshSessionMessages(sessionId) {
         .trim();
       if (body === "") continue;
       items.push({ id: "s" + event.seq, kind: "bot", sender: "DSH Agent", text: body, time: event.time ?? null, seq: event.seq });
+    } else if (event.type === "deliverables/presented") {
+      items.push(...deliverableItems(event));
     }
   }
   return items;
@@ -1029,6 +1057,10 @@ function roomMessagesFromSession(sessionId) {
   if (data === null) return [];
   const items = [];
   for (const event of data.events) {
+    if (event.type === "deliverables/presented") {
+      items.push(...deliverableItems(event));
+      continue;
+    }
     if (event.type !== "user/message") continue;
     const data = event.data ?? {};
     const source = data.source ?? {};
@@ -1385,12 +1417,18 @@ async function serveIm(req, res, url) {
         const nextCursor = result.value?.cursor ?? null;
         const workState = await botStateCached(3000);
         const botWork = workState.value?.work?.bots?.[id] ?? null;
+        // ds-bot chat 不自带 present 产物卡：从 Bot 会话日志补到最新一页
+        let deliverableMsgs = [];
+        if (cursorObject === undefined) {
+          const owner = listOf(workState.value?.bots).find((bot) => bot.id === id);
+          if (owner?.sessionId) deliverableMsgs = deliverablesFromSession(owner.sessionId);
+        }
         jsonResponse(res, 200, {
           ok: true,
           id,
           kind: "bot",
           sessionStatus: botWork,
-          items,
+          items: [...items, ...deliverableMsgs],
           hasMore: nextCursor !== null,
           cursor: nextCursor === null ? null : JSON.stringify(nextCursor),
         });
@@ -1485,6 +1523,73 @@ async function serveIm(req, res, url) {
       const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       fs.writeFileSync(path.join(dir, name), buffer);
       jsonResponse(res, 200, { ok: true, path: `uploads/${name}`, name });
+      return;
+    }
+
+    if (pathname === "/__im/file" && req.method === "GET") {
+      const rel = String(url.searchParams.get("path") ?? "");
+      if (rel === "") {
+        jsonResponse(res, 400, { ok: false, error: { message: "缺少 path" } });
+        return;
+      }
+      const workspace = path.resolve(path.join(DSH_HOME, "bot", "workspace"));
+      const file = path.isAbsolute(rel) ? path.resolve(rel) : path.resolve(workspace, rel);
+      if (!file.startsWith(workspace + path.sep)) {
+        jsonResponse(res, 403, { ok: false, error: { message: "forbidden" } });
+        return;
+      }
+      fs.stat(file, (error, stat) => {
+        if (error || !stat.isFile()) {
+          res.writeHead(404).end("not found");
+          return;
+        }
+        const ext = path.extname(file).toLowerCase();
+        const mime =
+          {
+            ".md": "text/markdown; charset=utf-8",
+            ".markdown": "text/markdown; charset=utf-8",
+            ".txt": "text/plain; charset=utf-8",
+            ".json": "application/json; charset=utf-8",
+            ".csv": "text/csv; charset=utf-8",
+            ".log": "text/plain; charset=utf-8",
+            ".html": "text/html; charset=utf-8",
+            ".xml": "application/xml; charset=utf-8",
+            ".svg": "image/svg+xml",
+          }[ext] ?? "application/octet-stream";
+        if (url.searchParams.get("raw") === "1") {
+          res.writeHead(200, {
+            "content-type": mime,
+            "content-length": String(stat.size),
+            "cache-control": "no-store",
+            "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`,
+          });
+          fs.createReadStream(file).pipe(res);
+          return;
+        }
+        if (stat.size > 3 * 1024 * 1024) {
+          jsonResponse(res, 400, { ok: false, error: { message: "文件较大，请下载查看" } });
+          return;
+        }
+        if (!/\.(md|markdown|txt|json|ya?ml|csv|tsv|log|js|mjs|cjs|ts|tsx|jsx|py|ps1|sh|html|css|xml|toml|ini)$/i.test(ext)) {
+          jsonResponse(res, 400, { ok: false, error: { message: "这个文件类型暂不支持预览，请下载" } });
+          return;
+        }
+        let text = "";
+        try {
+          text = fs.readFileSync(file, "utf8");
+        } catch (readError) {
+          jsonResponse(res, 500, { ok: false, error: { message: readError.message } });
+          return;
+        }
+        jsonResponse(res, 200, {
+          ok: true,
+          path: rel,
+          title: path.basename(file),
+          ext,
+          size: stat.size,
+          text,
+        });
+      });
       return;
     }
 

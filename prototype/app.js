@@ -670,7 +670,15 @@
       time: hm(item.time),
       rawTime: item.time ?? 0,
       image: item.image ?? null,
-      type: item.kind === "event" ? "system" : "text",
+      file:
+        item.kind === "file"
+          ? {
+              name: item.title ?? "产物",
+              meta: item.description ?? "",
+              path: item.path ?? ""
+            }
+          : undefined,
+      type: item.kind === "event" ? "system" : item.kind === "file" ? "file" : "text",
       text: item.text ?? ""
     }));
   }
@@ -1500,6 +1508,41 @@
     }, 160);
   }
 
+  async function openFileViewer(path, title) {
+    const viewer = $("#fileViewer");
+    const body = $("#fileViewerBody");
+    const titleEl = $("#fileViewerTitle");
+    const raw = $("#fileViewerRaw");
+    if (!viewer || !body || !path) return;
+    const name = title || String(path).split(/[\\/]/).pop() || "文件";
+    if (titleEl) titleEl.textContent = name;
+    if (raw) raw.href = "/__im/file?raw=1&path=" + encodeURIComponent(path);
+    viewer.hidden = false;
+    body.innerHTML = `<div class="empty">正在打开…</div>`;
+    try {
+      const data = await liveFetch("/__im/file?path=" + encodeURIComponent(path));
+      const ext = String(data.ext ?? "").toLowerCase();
+      if (ext === ".md" || ext === ".markdown") {
+        body.innerHTML = `<div class="md-doc">${renderMarkdown(data.text ?? "")}</div>`;
+      } else {
+        body.innerHTML = `<pre>${esc(data.text ?? "")}</pre>`;
+      }
+      if (titleEl && data.title) titleEl.textContent = data.title;
+    } catch (error) {
+      body.innerHTML = `<div class="empty">打开失败：${esc(
+        error.message
+      )}<br><br>可以点下面的按钮下载原文件。</div>`;
+    }
+  }
+
+  function closeFileViewer() {
+    const viewer = $("#fileViewer");
+    if (!viewer || viewer.hidden) return;
+    viewer.hidden = true;
+    const body = $("#fileViewerBody");
+    if (body) body.innerHTML = "";
+  }
+
   function messageHTML(msg, isGroup) {
     if (msg.type === "system") {
       return `<div class="msg system"><div class="system-pill">${esc(msg.text)}</div></div>`;
@@ -1533,16 +1576,20 @@
     } else if (msg.type === "approval") {
       body.push(approvalCardHTML(msg));
     } else if (msg.type === "file") {
+      const file = msg.file ?? { name: "文件", meta: "", path: "" };
+      const previewable = !!file.path;
       body.push(
         `<div class="file-rc">
           <div class="file-ic"><svg class="ic"><use href="#i-doc"/></svg></div>
           <div class="file-info">
-            <div class="file-name">${esc(msg.file.name)}</div>
-            <div class="file-meta">${esc(msg.file.meta)}</div>
+            <div class="file-name">${esc(file.name)}</div>
+            <div class="file-meta">${esc(file.meta)}</div>
           </div>
-          <button class="file-go" data-act="toast" data-toast="文件预览入口（原型占位）">${esc(
-            msg.file.action || "预览"
-          )}</button>
+          ${
+            previewable
+              ? `<button class="file-go" data-file="${esc(file.path)}">查看</button>`
+              : `<button class="file-go" data-act="toast" data-toast="文件预览入口（原型占位）">预览</button>`
+          }
         </div>`
       );
     }
@@ -2152,6 +2199,13 @@
         if (event.target.closest(".chat-row")) return;
       }
 
+      const fileHit = event.target.closest("[data-file]");
+      if (fileHit) {
+        event.preventDefault();
+        void openFileViewer(fileHit.dataset.file, "");
+        return;
+      }
+
       const imageHit = event.target.closest("[data-image]");
       if (imageHit) {
         event.preventDefault();
@@ -2446,6 +2500,8 @@
         clearPendingImage();
       } else if (act === "close-image") {
         closeImageViewer();
+      } else if (act === "close-file") {
+        closeFileViewer();
       } else if (act === "sheet-close") {
         closeSheet();
       } else if (act === "design-note") {
@@ -2626,6 +2682,11 @@
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
+        const fileViewer = $("#fileViewer");
+        if (fileViewer && !fileViewer.hidden) {
+          closeFileViewer();
+          return;
+        }
         const viewer = $("#imageViewer");
         if (viewer && !viewer.hidden) {
           closeImageViewer();
