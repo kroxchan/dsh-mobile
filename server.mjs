@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261109c";
+const PROTO_VERSION = "20261109e";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -716,11 +716,60 @@ function deliverableItems(event) {
 function deliverablesFromSession(sessionId) {
   const data = readSessionData(sessionId);
   if (data === null) return [];
-  const out = [];
+  const presented = new Map();
+  const written = new Map();
   for (const event of data.events) {
-    if (event.type === "deliverables/presented") out.push(...deliverableItems(event));
+    if (event.type === "deliverables/presented") {
+      for (const item of deliverableItems(event)) presented.set(item.path, item);
+      continue;
+    }
+    if (event.type !== "tool/call") continue;
+    const file = productFromToolCall(event);
+    if (file !== null && !written.has(file.path)) written.set(file.path, file);
   }
-  return out.slice(-20);
+  // present 过的文件优先用它的标题/描述；其余按写文件工具补齐，按时间排序
+  const merged = new Map(written);
+  for (const [key, item] of presented) merged.set(key, item);
+  return [...merged.values()]
+    .sort((a, b) => (Number(a.time) || 0) - (Number(b.time) || 0))
+    .slice(-20);
+}
+
+const PRODUCT_FILE_RE = /\.(md|markdown|txt|docx?|pdf|xlsx?|pptx?|csv|json)$/i;
+
+/** 从 `write` / `edit` 工具调用里提取工作区内的文档产物。 */
+function productFromToolCall(event) {
+  const data = event.data ?? {};
+  const name = String(data.name ?? "");
+  if (name !== "write" && name !== "edit") return null;
+  let args = data.arguments ?? data.args;
+  if (typeof args === "string") {
+    try {
+      args = JSON.parse(args);
+    } catch {
+      return null;
+    }
+  }
+  if (args === null || typeof args !== "object") return null;
+  const raw = args.path ?? args.file_path ?? args.filePath ?? args.target ?? "";
+  if (typeof raw !== "string" || raw === "") return null;
+  const workspace = path.resolve(path.join(DSH_HOME, "bot", "workspace"));
+  const absolute = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(workspace, raw);
+  if (!absolute.startsWith(workspace + path.sep)) return null;
+  if (!PRODUCT_FILE_RE.test(absolute)) return null;
+  let description = "";
+  const content = typeof args.content === "string" ? args.content : "";
+  const heading = content.match(/^#\s+(.+)$/m);
+  if (heading) description = heading[1].trim().slice(0, 100);
+  return {
+    id: "w" + event.seq,
+    kind: "file",
+    title: path.basename(absolute),
+    path: raw,
+    description,
+    time: event.time ?? null,
+    seq: event.seq,
+  };
 }
 
 /** 普通 DSH 会话当前是否在跑：看最后的 turn/start、turn/end 和 tool/call。 */

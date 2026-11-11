@@ -840,8 +840,9 @@
         state.sessionWork = { ...(state.sessionWork ?? {}), ...(snapshot.sessionWork ?? {}) };
         buildOwnerMap(snapshot);
         state.pollTick = (state.pollTick ?? 0) + 1;
-        if (state.chatId && state.pollTick % 2 === 0) {
-          void loadPending();
+        if (state.chatId) {
+          if (state.pollTick % 2 === 0) void loadPending();
+          else renderCardDock();
           void loadDeliverables(state.chatId);
         } else renderCardDock();
         const workBots = state.liveWork.bots ?? {};
