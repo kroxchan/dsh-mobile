@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261109h";
+const PROTO_VERSION = "20261109i";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -776,6 +776,45 @@ function productFromToolCall(event) {
 }
 
 /** 普通 DSH 会话当前是否在跑：看最后的 turn/start、turn/end 和 tool/call。 */
+/** Bot 之间派活 / 群内发帖的工具调用，转成聊天里的系统提示。 */
+function teamActionItems(sessionId) {
+  const data = readSessionData(sessionId);
+  if (data === null) return [];
+  const out = [];
+  for (const event of data.events) {
+    if (event.type !== "tool/call") continue;
+    const name = String(event.data?.name ?? "");
+    if (name !== "message_bot" && name !== "post_to_group") continue;
+    let args = event.data?.arguments;
+    if (typeof args === "string") {
+      try {
+        args = JSON.parse(args);
+      } catch {
+        continue;
+      }
+    }
+    if (args === null || typeof args !== "object") continue;
+    const message = String(args.message ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 90);
+    if (message === "") continue;
+    const target =
+      name === "message_bot"
+        ? String(args.bot ?? args.to ?? "Bot")
+        : "群「" + String(args.group ?? "群") + "」";
+    out.push({
+      id: "a" + event.seq,
+      kind: "event",
+      text: "→ " + target + "：" + message,
+      time: event.time ?? null,
+      seq: event.seq,
+      turn: Number(event.data?.turn) || null,
+    });
+  }
+  return out.slice(-40);
+}
+
 function sessionLiveStatus(sessionId) {
   const data = readSessionData(sessionId);
   if (data === null) return null;
@@ -1475,12 +1514,28 @@ async function serveIm(req, res, url) {
         const nextCursor = result.value?.cursor ?? null;
         const workState = await botStateCached(3000);
         const botWork = workState.value?.work?.bots?.[id] ?? null;
+        // 让 Bot 之间的派活 / 群内发帖在聊天里以系统提示显示
+        let actionMsgs = [];
+        if (cursorObject === undefined) {
+          const owner = listOf(workState.value?.bots).find((bot) => bot.id === id);
+          if (owner?.sessionId) {
+            const minTime = items.length
+              ? Math.min(...items.map((item) => Number(item.time) || 0))
+              : 0;
+            actionMsgs = teamActionItems(owner.sessionId).filter(
+              (item) => (Number(item.time) || 0) >= minTime
+            );
+          }
+        }
+        const mergedItems = [...items, ...actionMsgs].sort(
+          (a, b) => (Number(a.time) || 0) - (Number(b.time) || 0)
+        );
         jsonResponse(res, 200, {
           ok: true,
           id,
           kind: "bot",
           sessionStatus: botWork,
-          items,
+          items: mergedItems,
           hasMore: nextCursor !== null,
           cursor: nextCursor === null ? null : JSON.stringify(nextCursor),
         });

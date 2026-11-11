@@ -202,6 +202,16 @@
     return status ? status.text : "思考中…";
   }
 
+  const TOOL_LABELS = {
+    message_bot: "联系 Bot",
+    post_to_group: "群内发言",
+    update_bot: "更新 Bot",
+    update_group: "更新群",
+    list_bots: "查看成员",
+    list_agents: "查看成员",
+    ask_user: "等待选择"
+  };
+
   function statusFromWork(work, prefix) {
     if (!work) return null;
     if (work.switching) return { text: prefix + "切换工作区…", meta: "", since: work.since };
@@ -210,7 +220,11 @@
         .filter(Boolean)
         .join(" · ")
         .slice(0, 80);
-      return { text: prefix + `正在调用 ${work.tool}`, meta, since: work.since };
+      const label = TOOL_LABELS[work.tool];
+      const text = label
+        ? prefix + `正在${label}`
+        : prefix + `正在调用 ${work.tool}`;
+      return { text, meta, since: work.since };
     }
     return {
       text: prefix + "思考中…",
