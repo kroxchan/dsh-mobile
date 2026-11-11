@@ -939,6 +939,12 @@ function saveBotStateCache(result) {
   } catch {}
 }
 
+async function refreshBotStateNow() {
+  try {
+    await refreshBotState();
+  } catch {}
+}
+
 function refreshBotState() {
   if (cachedBotState.refreshing !== null) return cachedBotState.refreshing;
   cachedBotState.refreshing = (async () => {
@@ -1518,6 +1524,7 @@ async function serveIm(req, res, url) {
         return;
       }
       const result = await botApi("delete-bot", { id: botId });
+      if (result.ok) await refreshBotStateNow();
       jsonResponse(res, result.ok ? 200 : 400, result);
       return;
     }
@@ -1535,6 +1542,7 @@ async function serveIm(req, res, url) {
         color: String(body.color ?? "deepseek"),
         instructions: String(body.instructions ?? "").trim(),
       });
+      if (result.ok) await refreshBotStateNow();
       jsonResponse(res, result.ok ? 200 : 400, result);
       return;
     }
@@ -1548,6 +1556,7 @@ async function serveIm(req, res, url) {
         return;
       }
       const result = await botApi("create-room", { name, members, greet: false });
+      if (result.ok) await refreshBotStateNow();
       jsonResponse(res, result.ok ? 200 : 400, result);
       return;
     }
@@ -1558,6 +1567,7 @@ async function serveIm(req, res, url) {
         id: String(body.id ?? ""),
         add: Array.isArray(body.add) ? body.add : [],
       });
+      if (result.ok) await refreshBotStateNow();
       jsonResponse(res, result.ok ? 200 : 400, result);
       return;
     }
