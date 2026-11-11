@@ -11,7 +11,7 @@
 
 电脑端 DSH 界面完全不受影响。
 
-- 产物入口：只收文档类（md / txt / docx / pdf / xlsx / pptx / csv / json 等），按轮次分组展示，可在手机内直接打开阅读
+- 产物入口：文档（md / txt / docx / pdf / xlsx / pptx / csv / json）和图片都支持，按轮次分组，可在手机内直接打开预览
 
 ## 架构
 

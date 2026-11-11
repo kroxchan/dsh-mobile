@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261109f";
+const PROTO_VERSION = "20261109h";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -737,7 +737,7 @@ function deliverablesFromSession(sessionId) {
     .slice(-20);
 }
 
-const DOCUMENT_FILE_RE = /\.(md|markdown|txt|docx?|pdf|xlsx?|pptx?|csv|json|ya?ml)$/i;
+const DOCUMENT_FILE_RE = /\.(md|markdown|txt|docx?|pdf|xlsx?|pptx?|csv|json|ya?ml|png|jpe?g|gif|webp|bmp|svg)$/i;
 
 /** 从 `write` / `edit` 工具调用里提取工作区内的文档产物。 */
 function productFromToolCall(event) {
@@ -1506,6 +1506,18 @@ async function serveIm(req, res, url) {
         return;
       }
       const result = await botApi("send", { sessionId: id, text });
+      jsonResponse(res, result.ok ? 200 : 400, result);
+      return;
+    }
+
+    if (pathname === "/__im/delete-bot" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const botId = String(body.id ?? "");
+      if (botId === "") {
+        jsonResponse(res, 400, { ok: false, error: { message: "缺少 id" } });
+        return;
+      }
+      const result = await botApi("delete-bot", { id: botId });
       jsonResponse(res, result.ok ? 200 : 400, result);
       return;
     }

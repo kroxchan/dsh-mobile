@@ -482,17 +482,26 @@
         const rows = list
           .slice()
           .reverse()
-          .map(
-            (item) => `<div class="session-row">
-              <button class="menu-row" data-file="${esc(item.path)}" data-file-title="${esc(item.title ?? "")}">
-                <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-doc"/></svg></span>
+          .map((item) => {
+            const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(item.path);
+            const attrs = isImage
+              ? `data-image="${esc(item.path)}"`
+              : `data-file="${esc(item.path)}" data-file-title="${esc(item.title ?? "")}"`;
+            const icon = isImage
+              ? `<span class="deliverable-thumb"><img src="/__im/files?path=${encodeURIComponent(
+                  item.path
+                )}" alt="" loading="lazy"></span>`
+              : `<span class="menu-ic ic-muted"><svg class="ic"><use href="#i-doc"/></svg></span>`;
+            return `<div class="session-row">
+              <button class="menu-row" ${attrs}>
+                ${icon}
                 <span class="menu-label">${esc(item.title || "产物")}<span class="menu-sub">${esc(
                   item.description || ""
                 )}</span></span>
                 <svg class="ic chev"><use href="#i-chev"/></svg>
               </button>
-            </div>`
-          )
+            </div>`;
+          })
           .join("");
         return `<div class="deliverable-group-title">${esc(head)}</div><div class="group-card">${rows}</div>`;
       })
@@ -2041,6 +2050,78 @@
       </div>
       <div class="sheet-footer">
         <button class="btn primary" data-open="${target.id}">发消息</button>
+      </div>
+      ${
+        target.agent
+          ? ""
+          : `<div style="height:10px"></div>
+      <button class="btn" data-delete-bot="${target.id}" style="width:100%;padding:12px;color:var(--danger)">删除 agent</button>`
+      }`);
+  }
+
+  function openDeleteBotSheet(id) {
+    const target = state.botMap[id];
+    const name = target ? target.name : "这个 agent";
+    openSheet(`<h3>删除 agent</h3>
+      <p class="sheet-sub">删除「${esc(name)}」会把它从组织和通讯录移除，会话记录也会一起删除，不可恢复。</p>
+      <div class="sheet-footer">
+        <button class="btn" data-act="sheet-close">取消</button>
+        <button class="btn danger" data-confirm-delete-bot="${esc(id)}">删除</button>
+      </div>`);
+  }
+
+  async function deleteBot(id) {
+    if (!id) return;
+    const target = state.botMap[id];
+    if (target?.agent) {
+      showToast("DSH Agent 不能删除");
+      return;
+    }
+    try {
+      if (state.live) {
+        await liveFetch("/__im/delete-bot", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id })
+        });
+        state.convs = state.convs.filter((conv) => conv.id !== id);
+        if (state.chatId === id) location.hash = "#/chats";
+        await liveLoadState();
+        renderContacts();
+        renderChats();
+      } else {
+        state.bots = state.bots.filter((bot) => bot.id !== id);
+        state.convs = state.convs.filter((conv) => conv.id !== id);
+        rebuildBotMap();
+        renderContacts();
+        renderChats();
+      }
+      closeSheet();
+      showToast("已删除 agent");
+    } catch (error) {
+      showToast("删除失败：" + error.message);
+    }
+  }
+
+  function openContactActions(id) {
+    const target = state.botMap[id];
+    if (!target) return;
+    openSheet(`<h3>${esc(target.name)}</h3>
+      <p class="sheet-sub">${esc(target.role)} · ${esc(D.DEPTS[target.dept].name)}</p>
+      <div class="group-card">
+        <button class="menu-row" data-open="${esc(id)}">
+          <span class="menu-ic"><svg class="ic"><use href="#i-chat"/></svg></span>
+          <span class="menu-label">发消息</span>
+          <svg class="ic chev"><use href="#i-chev"/></svg>
+        </button>
+        ${
+          target.agent
+            ? ""
+            : `<button class="menu-row" data-delete-bot="${esc(id)}">
+          <span class="menu-ic"><svg class="ic"><use href="#i-close"/></svg></span>
+          <span class="menu-label" style="color:var(--danger)">删除 agent</span>
+        </button>`
+        }
       </div>`);
   }
 
@@ -2276,7 +2357,7 @@
     document.addEventListener("click", (event) => {
       if (suppressClick) {
         suppressClick = false;
-        if (event.target.closest(".chat-row")) return;
+        if (event.target.closest(".chat-row, .contact-row")) return;
       }
 
       const fileHit = event.target.closest("[data-file]");
@@ -2317,6 +2398,18 @@
       const renameHit = event.target.closest("[data-rename-session]");
       if (renameHit) {
         openRenameSessionSheet(renameHit.dataset.renameSession, renameHit.dataset.title || "");
+        return;
+      }
+
+      const deleteBotHit = event.target.closest("[data-delete-bot]");
+      if (deleteBotHit) {
+        openDeleteBotSheet(deleteBotHit.dataset.deleteBot);
+        return;
+      }
+
+      const confirmDeleteBot = event.target.closest("[data-confirm-delete-bot]");
+      if (confirmDeleteBot) {
+        void deleteBot(confirmDeleteBot.dataset.confirmDeleteBot);
         return;
       }
 
@@ -2691,6 +2784,37 @@
       if (!row) return;
       event.preventDefault();
       openPinSheet(row.dataset.open);
+    });
+
+    // 长按通讯录里的 agent：发消息 / 删除
+    let contactPressTimer = null;
+    let contactPressStart = null;
+    document.addEventListener("pointerdown", (event) => {
+      const row = event.target.closest(".contact-row");
+      if (!row) return;
+      contactPressStart = { x: event.clientX, y: event.clientY };
+      contactPressTimer = setTimeout(() => {
+        contactPressTimer = null;
+        suppressClick = true;
+        openContactActions(row.dataset.open);
+      }, 520);
+    });
+    const cancelContactPress = () => {
+      if (contactPressTimer) {
+        clearTimeout(contactPressTimer);
+        contactPressTimer = null;
+      }
+    };
+    document.addEventListener("pointerup", cancelContactPress);
+    document.addEventListener("pointercancel", cancelContactPress);
+    document.addEventListener("pointermove", (event) => {
+      if (!contactPressTimer || !contactPressStart) return;
+      if (
+        Math.abs(event.clientX - contactPressStart.x) > 10 ||
+        Math.abs(event.clientY - contactPressStart.y) > 10
+      ) {
+        cancelContactPress();
+      }
     });
 
     // 长按消息：复制文字 / 图片路径
