@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261109a";
+const PROTO_VERSION = "20261109c";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1417,18 +1417,12 @@ async function serveIm(req, res, url) {
         const nextCursor = result.value?.cursor ?? null;
         const workState = await botStateCached(3000);
         const botWork = workState.value?.work?.bots?.[id] ?? null;
-        // ds-bot chat 不自带 present 产物卡：从 Bot 会话日志补到最新一页
-        let deliverableMsgs = [];
-        if (cursorObject === undefined) {
-          const owner = listOf(workState.value?.bots).find((bot) => bot.id === id);
-          if (owner?.sessionId) deliverableMsgs = deliverablesFromSession(owner.sessionId);
-        }
         jsonResponse(res, 200, {
           ok: true,
           id,
           kind: "bot",
           sessionStatus: botWork,
-          items: [...items, ...deliverableMsgs],
+          items,
           hasMore: nextCursor !== null,
           cursor: nextCursor === null ? null : JSON.stringify(nextCursor),
         });
@@ -1523,6 +1517,20 @@ async function serveIm(req, res, url) {
       const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       fs.writeFileSync(path.join(dir, name), buffer);
       jsonResponse(res, 200, { ok: true, path: `uploads/${name}`, name });
+      return;
+    }
+
+    if (pathname === "/__im/deliverables" && req.method === "GET") {
+      const id = String(url.searchParams.get("id") ?? "");
+      if (id === "") {
+        jsonResponse(res, 400, { ok: false, error: { message: "缺少 id" } });
+        return;
+      }
+      const stateResult = await botStateCached(3000);
+      const bot = listOf(stateResult.value?.bots).find((item) => item.id === id);
+      const room = listOf(stateResult.value?.rooms).find((item) => item.id === id);
+      const sessionId = bot?.sessionId ?? room?.sessionId ?? id;
+      jsonResponse(res, 200, { ok: true, items: deliverablesFromSession(sessionId) });
       return;
     }
 

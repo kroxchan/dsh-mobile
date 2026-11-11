@@ -71,6 +71,7 @@
     liveActivity: {},
     sessionWork: {},
     pending: { approvals: [], questions: [] },
+    deliverables: [],
     ownerMap: {},
     qSelected: {},
     mySessions: [],
@@ -423,6 +424,57 @@
       };
       renderCardDock();
     } catch {}
+  }
+
+  async function loadDeliverables(id) {
+    if (!state.live || !id) {
+      state.deliverables = [];
+      renderDeliverableBar();
+      return;
+    }
+    try {
+      const data = await liveFetch("/__im/deliverables?id=" + encodeURIComponent(id));
+      if (state.chatId !== id) return;
+      state.deliverables = data.items ?? [];
+      renderDeliverableBar();
+    } catch {}
+  }
+
+  function renderDeliverableBar() {
+    const bar = $("#deliverableBar");
+    if (!bar) return;
+    const count = (state.deliverables ?? []).length;
+    const show = !!(state.chatId && count > 0);
+    bar.hidden = !show;
+    if (!show) return;
+    const node = $("#deliverableCount");
+    if (node) node.textContent = String(count);
+  }
+
+  function openDeliverablesSheet() {
+    const items = state.deliverables ?? [];
+    if (items.length === 0) {
+      showToast("这个会话还没有产物");
+      return;
+    }
+    const rows = items
+      .slice()
+      .reverse()
+      .map(
+        (item) => `<div class="session-row">
+          <button class="menu-row" data-file="${esc(item.path)}" data-file-title="${esc(item.title ?? "")}">
+            <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-doc"/></svg></span>
+            <span class="menu-label">${esc(item.title || "产物")}<span class="menu-sub">${esc(
+              item.description || ""
+            )}</span></span>
+            <svg class="ic chev"><use href="#i-chev"/></svg>
+          </button>
+        </div>`
+      )
+      .join("");
+    openSheet(`<h3>产物</h3>
+      <p class="sheet-sub">点击直接在手机里打开，共 ${items.length} 个。</p>
+      <div class="group-card">${rows}</div>`);
   }
 
   function markCardClosed(eventId) {
@@ -788,8 +840,10 @@
         state.sessionWork = { ...(state.sessionWork ?? {}), ...(snapshot.sessionWork ?? {}) };
         buildOwnerMap(snapshot);
         state.pollTick = (state.pollTick ?? 0) + 1;
-        if (state.chatId && state.pollTick % 2 === 0) void loadPending();
-        else renderCardDock();
+        if (state.chatId && state.pollTick % 2 === 0) {
+          void loadPending();
+          void loadDeliverables(state.chatId);
+        } else renderCardDock();
         const workBots = state.liveWork.bots ?? {};
         const activity = state.liveActivity;
         state.bots.forEach((bot) => {
@@ -1339,6 +1393,7 @@
     updateTabBadge();
     updateLiveStatus();
     void loadPending();
+    void loadDeliverables(id);
     resetComposer();
     let atTop = false;
     try {
@@ -2202,7 +2257,7 @@
       const fileHit = event.target.closest("[data-file]");
       if (fileHit) {
         event.preventDefault();
-        void openFileViewer(fileHit.dataset.file, "");
+        void openFileViewer(fileHit.dataset.file, fileHit.dataset.fileTitle || "");
         return;
       }
 
@@ -2459,6 +2514,8 @@
         void createSession();
       } else if (act === "sessions") {
         void openSessionsSheet();
+      } else if (act === "deliverables") {
+        openDeliverablesSheet();
       } else if (act === "reload") {
         const params = new URLSearchParams(location.search);
         location.replace(

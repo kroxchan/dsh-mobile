@@ -11,7 +11,7 @@
 
 电脑端 DSH 界面完全不受影响。
 
-- 聊天里的产物卡（DSH `present` 的 md / txt / json / csv 等）可直接在手机内打开阅读
+- 聊天里的产物入口（DSH `present` 的 md / txt / json / csv 等）可直接在手机内打开阅读
 
 ## 架构
 
