@@ -11,7 +11,7 @@
 
 电脑端 DSH 界面完全不受影响。
 
-- 产物入口：`present` 卡片 + Bot 用 write/edit 写出的 md / txt / json / csv 等文档都能在手机内打开阅读
+- 产物入口：只收文档类（md / txt / docx / pdf / xlsx / pptx / csv / json 等），按轮次分组展示，可在手机内直接打开阅读
 
 ## 架构
 

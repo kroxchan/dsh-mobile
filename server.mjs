@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261109e";
+const PROTO_VERSION = "20261109f";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -700,6 +700,7 @@ function annotateImages(items) {
 /** DSH `present` 工具产生的产物卡片：转成手机端可点击查看的文件消息。 */
 function deliverableItems(event) {
   const files = Array.isArray(event.data?.files) ? event.data.files : [];
+  const turn = Number(event.data?.turn) || null;
   return files
     .map((file, index) => ({
       id: "d" + event.seq + "-" + index,
@@ -709,8 +710,9 @@ function deliverableItems(event) {
       description: typeof file?.description === "string" ? file.description : "",
       time: event.time ?? null,
       seq: event.seq,
+      turn,
     }))
-    .filter((item) => item.path !== "");
+    .filter((item) => item.path !== "" && DOCUMENT_FILE_RE.test(item.path));
 }
 
 function deliverablesFromSession(sessionId) {
@@ -735,7 +737,7 @@ function deliverablesFromSession(sessionId) {
     .slice(-20);
 }
 
-const PRODUCT_FILE_RE = /\.(md|markdown|txt|docx?|pdf|xlsx?|pptx?|csv|json)$/i;
+const DOCUMENT_FILE_RE = /\.(md|markdown|txt|docx?|pdf|xlsx?|pptx?|csv|json|ya?ml)$/i;
 
 /** 从 `write` / `edit` 工具调用里提取工作区内的文档产物。 */
 function productFromToolCall(event) {
@@ -756,7 +758,7 @@ function productFromToolCall(event) {
   const workspace = path.resolve(path.join(DSH_HOME, "bot", "workspace"));
   const absolute = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(workspace, raw);
   if (!absolute.startsWith(workspace + path.sep)) return null;
-  if (!PRODUCT_FILE_RE.test(absolute)) return null;
+  if (!DOCUMENT_FILE_RE.test(absolute)) return null;
   let description = "";
   const content = typeof args.content === "string" ? args.content : "";
   const heading = content.match(/^#\s+(.+)$/m);
@@ -769,6 +771,7 @@ function productFromToolCall(event) {
     description,
     time: event.time ?? null,
     seq: event.seq,
+    turn: Number(event.data?.turn) || null,
   };
 }
 

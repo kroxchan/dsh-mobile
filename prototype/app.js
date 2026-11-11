@@ -443,7 +443,15 @@
   function renderDeliverableBar() {
     const bar = $("#deliverableBar");
     if (!bar) return;
-    const count = (state.deliverables ?? []).length;
+    const items = state.deliverables ?? [];
+    const turns = items
+      .map((item) => Number(item.turn) || 0)
+      .filter((turn) => turn > 0);
+    const latestTurn = turns.length > 0 ? Math.max(...turns) : 0;
+    const latestItems = latestTurn
+      ? items.filter((item) => (Number(item.turn) || 0) === latestTurn)
+      : items;
+    const count = latestItems.length;
     const show = !!(state.chatId && count > 0);
     bar.hidden = !show;
     if (!show) return;
@@ -457,24 +465,41 @@
       showToast("这个会话还没有产物");
       return;
     }
-    const rows = items
+    const groups = new Map();
+    const sorted = items
       .slice()
-      .reverse()
-      .map(
-        (item) => `<div class="session-row">
-          <button class="menu-row" data-file="${esc(item.path)}" data-file-title="${esc(item.title ?? "")}">
-            <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-doc"/></svg></span>
-            <span class="menu-label">${esc(item.title || "产物")}<span class="menu-sub">${esc(
-              item.description || ""
-            )}</span></span>
-            <svg class="ic chev"><use href="#i-chev"/></svg>
-          </button>
-        </div>`
-      )
+      .sort((a, b) => (Number(a.turn) || 0) - (Number(b.turn) || 0) || (Number(a.time) || 0) - (Number(b.time) || 0));
+    for (const item of sorted) {
+      const turn = Number(item.turn) || 0;
+      if (!groups.has(turn)) groups.set(turn, []);
+      groups.get(turn).push(item);
+    }
+    const sections = [...groups.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([turn, list]) => {
+        const time = list.length > 0 && list[list.length - 1].time ? hm(list[list.length - 1].time) : "";
+        const head = turn > 0 ? `第 ${turn} 轮${time ? " · " + time : ""}` : `其他${time ? " · " + time : ""}`;
+        const rows = list
+          .slice()
+          .reverse()
+          .map(
+            (item) => `<div class="session-row">
+              <button class="menu-row" data-file="${esc(item.path)}" data-file-title="${esc(item.title ?? "")}">
+                <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-doc"/></svg></span>
+                <span class="menu-label">${esc(item.title || "产物")}<span class="menu-sub">${esc(
+                  item.description || ""
+                )}</span></span>
+                <svg class="ic chev"><use href="#i-chev"/></svg>
+              </button>
+            </div>`
+          )
+          .join("");
+        return `<div class="deliverable-group-title">${esc(head)}</div><div class="group-card">${rows}</div>`;
+      })
       .join("");
     openSheet(`<h3>产物</h3>
-      <p class="sheet-sub">点击直接在手机里打开，共 ${items.length} 个。</p>
-      <div class="group-card">${rows}</div>`);
+      <p class="sheet-sub">按轮次分组；点击直接在手机里打开。</p>
+      ${sections}`);
   }
 
   function markCardClosed(eventId) {
@@ -1946,9 +1971,8 @@
         </div>
       </div>
       <p class="hint">头像自动取名称首字，颜色跟随部门；添加后可在通讯录里直接聊天。</p>
-      <div class="sheet-footer">
-        <button class="btn primary" data-create-bot>添加到组织</button>
-      </div>`);
+      <div style="height:8px"></div>
+      <button class="btn primary" data-create-bot style="width:100%;padding:12px">添加到组织</button>`);
   }
 
   function addBot(name, role, dept) {
@@ -3395,6 +3419,7 @@
     if (demo === "image")
       setTimeout(() => openImageViewer("dsh-mobile/prototype/shots/30-flat-chats.png"), 1200);
     if (demo === "sessions") setTimeout(() => void openSessionsSheet(), 400);
+    if (demo === "addbot") setTimeout(openAddBot, 400);
     if (demo === "newchat") setTimeout(openNewChatMenu, 400);
     if (demo === "pin")
       setTimeout(() => {
