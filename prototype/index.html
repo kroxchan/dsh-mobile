@@ -125,11 +125,11 @@
     }
   }
 </style>
-<link rel="preload" href="styles.css?v=20261109i" as="style" onload="this.onload=null;this.rel='stylesheet'">
-<link rel="preload" href="theme-flat.css?v=20261109i" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<link rel="preload" href="styles.css?v=20261113b" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<link rel="preload" href="theme-flat.css?v=20261113b" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <noscript>
-  <link rel="stylesheet" href="styles.css?v=20261109i">
-  <link rel="stylesheet" href="theme-flat.css?v=20261109i">
+  <link rel="stylesheet" href="styles.css?v=20261113b">
+  <link rel="stylesheet" href="theme-flat.css?v=20261113b">
 </noscript>
 <script>
   (function () {
@@ -265,6 +265,16 @@
 <div class="stage">
   <div id="app" class="app">
 
+    <div class="notify-banner" id="notifyBanner" hidden>
+      <div class="notify-copy">
+        <div class="notify-title" id="notifyTitle">任务完成</div>
+        <div class="notify-body" id="notifyBody"></div>
+      </div>
+      <button class="notify-close" data-act="close-notify" aria-label="关闭">
+        <svg class="ic"><use href="#i-close"/></svg>
+      </button>
+    </div>
+
     <!-- ============================ 消息列表 ============================ -->
     <section class="page is-active" id="page-chats" data-page="chats" aria-label="消息">
       <header class="nav">
@@ -393,6 +403,12 @@
             <button class="menu-row" data-act="reload">
               <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-clock"/></svg></span>
               <span class="menu-label">重新加载页面</span>
+              <svg class="ic chev"><use href="#i-chev"/></svg>
+            </button>
+            <button class="menu-row" data-act="notify">
+              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-bell"/></svg></span>
+              <span class="menu-label">任务提醒<span class="menu-sub" id="notifySub">应用内提醒已开启</span></span>
+              <span class="menu-value" id="notifyValue">系统通知</span>
               <svg class="ic chev"><use href="#i-chev"/></svg>
             </button>
             <button class="menu-row" data-act="billing">
@@ -555,7 +571,7 @@
   <p class="stage-meta">移动端交互原型 · 390 × 844 · 比例已锁定</p>
 </div>
 
-<script src="data.js?v=20261109i"></script>
-<script src="app.js?v=20261109i"></script>
+<script src="data.js?v=20261113b"></script>
+<script src="app.js?v=20261113b"></script>
 </body>
 </html>

@@ -72,6 +72,9 @@
     sessionWork: {},
     pending: { approvals: [], questions: [] },
     deliverables: [],
+    notifySystem: false,
+    notifyRunning: null,
+    notifySeen: {},
     ownerMap: {},
     qSelected: {},
     mySessions: [],
@@ -425,6 +428,160 @@
     };
   }
 
+  let notifyHideTimer = null;
+
+  function notificationSupported() {
+    return typeof window.Notification !== "undefined";
+  }
+
+  function updateNotifyUI() {
+    const sub = $("#notifySub");
+    const value = $("#notifyValue");
+    if (sub) {
+      sub.textContent = notificationSupported()
+        ? state.notifySystem
+          ? "系统通知 + 应用内提醒"
+          : "应用内提醒已开启"
+        : "应用内提醒（系统通知需添加到主屏幕）";
+    }
+    if (value) {
+      if (!notificationSupported()) value.textContent = "不支持";
+      else if (state.notifySystem) value.textContent = "已开启";
+      else value.textContent = "未开启";
+    }
+  }
+
+  async function toggleSystemNotify() {
+    if (!notificationSupported()) {
+      showToast("当前浏览器不支持系统通知；iOS 需先「添加到主屏幕」");
+      return;
+    }
+    if (state.notifySystem) {
+      state.notifySystem = false;
+      try {
+        localStorage.setItem("kpao-notify-system", "0");
+      } catch {}
+      updateNotifyUI();
+      showToast("系统通知已关闭，应用内提醒仍然有效");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      state.notifySystem = true;
+      try {
+        localStorage.setItem("kpao-notify-system", "1");
+      } catch {}
+      updateNotifyUI();
+      showToast("系统通知已开启");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      state.notifySystem = true;
+      try {
+        localStorage.setItem("kpao-notify-system", "1");
+      } catch {}
+      updateNotifyUI();
+      showToast("系统通知已开启");
+    } else {
+      showToast("没有获得通知权限，应用内提醒仍然有效");
+    }
+  }
+
+  function hideNotifyBanner() {
+    const banner = $("#notifyBanner");
+    if (banner) banner.hidden = true;
+  }
+
+  function showNotify(title, body, convId) {
+    const banner = $("#notifyBanner");
+    const titleEl = $("#notifyTitle");
+    const bodyEl = $("#notifyBody");
+    if (!banner || !titleEl || !bodyEl) return;
+    titleEl.textContent = title;
+    bodyEl.textContent = body;
+    banner.dataset.conv = convId || "";
+    banner.hidden = false;
+    if (notifyHideTimer !== null) clearTimeout(notifyHideTimer);
+    notifyHideTimer = setTimeout(() => {
+      notifyHideTimer = null;
+      banner.hidden = true;
+    }, 9000);
+    if (
+      state.notifySystem &&
+      notificationSupported() &&
+      Notification.permission === "granted"
+    ) {
+      try {
+        const notification = new Notification(title, { body, tag: convId || title });
+        notification.onclick = () => {
+          window.focus();
+          if (convId) location.hash = "#/chat/" + convId;
+          notification.close();
+        };
+      } catch {}
+    }
+  }
+
+  function collectRunningIds() {
+    const ids = new Set();
+    for (const group of ["bots", "rooms"]) {
+      Object.keys(state.liveWork?.[group] ?? {}).forEach((id) => ids.add(id));
+    }
+    Object.keys(state.liveWork?.turns ?? {}).forEach((id) => ids.add(id));
+    Object.keys(state.sessionWork ?? {}).forEach((id) => ids.add(id));
+    for (const [id, value] of Object.entries(state.liveActivity ?? {})) {
+      if (value && value !== "idle") ids.add(id);
+    }
+    return ids;
+  }
+
+  function checkRunningNotifications() {
+    if (!state.live) return;
+    const now = collectRunningIds();
+    if (state.notifyRunning !== null) {
+      for (const id of state.notifyRunning) {
+        if (now.has(id)) continue;
+        const conv = convById(id);
+        if (!conv) continue;
+        const messages = state.messages[id] ?? [];
+        const last = messages.filter((m) => m.type === "text" || m.type === "file").at(-1);
+        const preview = last
+          ? String(last.text ?? last.file?.name ?? "").replace(/\s+/g, " ").slice(0, 60)
+          : "";
+        showNotify("任务完成", `${convName(conv)}${preview ? " · " + preview : ""}`, id);
+      }
+    }
+    state.notifyRunning = now;
+  }
+
+  function notifyPendingCards() {
+    const seen = state.notifySeen;
+    for (const item of state.pending.approvals ?? []) {
+      if (seen[item.eventId]) continue;
+      seen[item.eventId] = true;
+      const convId = state.ownerMap[item.sessionId] || item.sessionId;
+      showNotify(
+        "需要你确认",
+        `工具审批：${item.toolName || "工具"}${item.reason ? " · " + String(item.reason).slice(0, 50) : ""}`,
+        convId
+      );
+    }
+    for (const bundle of state.pending.questions ?? []) {
+      if (seen[bundle.eventId]) continue;
+      seen[bundle.eventId] = true;
+      const convId = state.ownerMap[bundle.sessionId] || bundle.sessionId;
+      const first = bundle.questions?.[0];
+      showNotify("需要你选择", String(first?.question ?? "有一个选择题待处理").slice(0, 80), convId);
+    }
+    const keys = Object.keys(seen);
+    if (keys.length > 200) {
+      state.notifySeen = {};
+      keys.slice(-100).forEach((key) => {
+        state.notifySeen[key] = true;
+      });
+    }
+  }
+
   async function loadPending() {
     if (!state.live) return;
     const token = state.pendingToken ?? 0;
@@ -437,6 +594,7 @@
         questions: (data.questions ?? []).filter((item) => !closed[item.eventId])
       };
       renderCardDock();
+      notifyPendingCards();
     } catch {}
   }
 
@@ -888,11 +1046,9 @@
         state.sessionWork = { ...(state.sessionWork ?? {}), ...(snapshot.sessionWork ?? {}) };
         buildOwnerMap(snapshot);
         state.pollTick = (state.pollTick ?? 0) + 1;
-        if (state.chatId) {
-          if (state.pollTick % 2 === 0) void loadPending();
-          else renderCardDock();
-          void loadDeliverables(state.chatId);
-        } else renderCardDock();
+        if (state.pollTick % 2 === 0) void loadPending();
+        else renderCardDock();
+        if (state.chatId) void loadDeliverables(state.chatId);
         const workBots = state.liveWork.bots ?? {};
         const activity = state.liveActivity;
         state.bots.forEach((bot) => {
@@ -920,6 +1076,7 @@
           Object.values(activity).some((value) => value && value !== "idle") ||
           !!(state.live && state.chatId && liveStatusFor(currentConv()));
         updateLiveStatus();
+        checkRunningNotifications();
       } catch {
         // 下一轮再试
       }
@@ -2602,6 +2759,16 @@
     const viewer = $("#imageViewer");
     if (viewer) viewer.addEventListener("click", closeImageViewer);
 
+    const notifyBanner = $("#notifyBanner");
+    if (notifyBanner) {
+      notifyBanner.addEventListener("click", (event) => {
+        if (event.target.closest("[data-act='close-notify']")) return;
+        const conv = notifyBanner.dataset.conv;
+        notifyBanner.hidden = true;
+        if (conv) location.hash = "#/chat/" + conv;
+      });
+    }
+
     const cardDock = $("#cardDock");
     if (cardDock) {
       // 手指按住/点击卡片期间不要重绘，否则 iOS 上的 click 会被吞掉
@@ -2648,6 +2815,10 @@
         void openSessionsSheet();
       } else if (act === "deliverables") {
         openDeliverablesSheet();
+      } else if (act === "notify") {
+        void toggleSystemNotify();
+      } else if (act === "close-notify") {
+        hideNotifyBanner();
       } else if (act === "reload") {
         const params = new URLSearchParams(location.search);
         location.replace(
@@ -3525,6 +3696,13 @@
     try {
       state.agentSessionId = localStorage.getItem("kpao-agent-session") || null;
     } catch {}
+    try {
+      state.notifySystem =
+        localStorage.getItem("kpao-notify-system") === "1" &&
+        typeof window.Notification !== "undefined" &&
+        Notification.permission === "granted";
+    } catch {}
+    updateNotifyUI();
 
     renderChats();
     renderContacts();
