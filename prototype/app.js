@@ -3743,15 +3743,12 @@
     const conv = currentConv();
     if (!conv) return;
     const isGroup = conv.kind === "group";
+    // 只保留已经能打开真实数据/动作的入口；不能实际工作的预设不再展示。
     const tools = [
-      ["i-spark", "模型", "open-models"],
-      ["i-shield", "权限", "open-permissions"],
       ["i-usage", "用量", "open-billing"],
       ["i-plus", "附件", "open-attachments"],
       ["i-folder", "文件", "open-files"],
-      ["i-browser", "浏览器", "toast", "桌面端浏览器暂未接入"],
-      ["i-task", "任务板", "open-jobs"],
-      ["i-clock", "定时", "toast", "定时任务暂未接入"]
+      ["i-task", "任务板", "open-jobs"]
     ];
     const title = isGroup ? conv.name : state.botMap[conv.id]?.name || conv.name || "会话";
     openSheet(`<h3>会话工具</h3>
