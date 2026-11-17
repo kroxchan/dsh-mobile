@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261117s";
+const PROTO_VERSION = "20261117t";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -2155,6 +2155,30 @@ function servePrototype(req, res, pathname) {
     if (error || !stat.isFile()) {
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
       return;
+    }
+    // 首屏关键 CSS 直接内联，避免网络慢时只拿到 styles.css、theme-flat.css 未到时
+    // 出现“旧版/超大布局”和大面积比例错乱。
+    if (rel === "index.html") {
+      try {
+        const html = fs.readFileSync(file, "utf8");
+        const baseCss = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+        const flatCss = fs.readFileSync(path.join(root, "theme-flat.css"), "utf8");
+        const styleTag = '<style data-inline="critical">\n' + baseCss + '\n' + flatCss + '\n</style>\n';
+        const inlined = html
+          .replace(/<link[^>]+(?:styles|theme-flat)\.css[^>]*>/gi, "")
+          .replace("</head>", styleTag + "</head>");
+        const buffer = Buffer.from(inlined, "utf8");
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "content-length": String(buffer.length),
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer",
+        });
+        res.end(buffer);
+        return;
+      } catch (inlineError) {
+        log(`inline css failed: ${String(inlineError?.message ?? inlineError)}`);
+      }
     }
     const headers = {
       "content-type": PROTO_MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream",
