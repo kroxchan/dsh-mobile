@@ -1,12 +1,56 @@
-﻿{
+{
   "name": "dsh-mobile",
   "version": "0.5.0",
-  "private": true,
+  "private": false,
   "description": "Mobile web frontend + LAN/tunnel gateway for DeepSeek Harness (DSH)",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "setup": "node setup.mjs",
     "start": "node server.mjs"
-  }
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Krox",
+    "url": "https://github.com/kroxchan"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kroxchan/dsh-mobile.git"
+  },
+  "homepage": "https://github.com/kroxchan/dsh-mobile#readme",
+  "bugs": {
+    "url": "https://github.com/kroxchan/dsh-mobile/issues"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-mobile",
+    "mobile",
+    "webapp",
+    "gateway",
+    "cloudflare-tunnel"
+  ],
+  "files": [
+    "server.mjs",
+    "setup.mjs",
+    "gateway-guard.js",
+    "prototype/app.js",
+    "prototype/data.js",
+    "prototype/index.html",
+    "prototype/styles.css",
+    "prototype/theme-flat.css",
+    "start.ps1",
+    "stop.ps1",
+    "launch-gateway.vbs",
+    "launch-tunnel.vbs",
+    "config.example.json",
+    "README.md",
+    "INSTALL.md",
+    "COMMUNITY.md",
+    "LICENSE"
+  ]
 }

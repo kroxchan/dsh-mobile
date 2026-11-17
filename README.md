@@ -12,6 +12,12 @@
 
 电脑端 DSH 界面完全不受影响。
 
+> **非官方项目**：dsh-mobile 是第三方 DSH 配套工具，不是 DeepSeek 官方产品。
+> 手机端登录后拥有与本机 DSH 浏览器相同的权限，请只自己或可信的人使用。
+>
+> 安装：见 [INSTALL.md](INSTALL.md)  
+> 发布到社区市场/试用说明：见 [COMMUNITY.md](COMMUNITY.md)
+
 - 产物入口：文档（md / txt / docx / pdf / xlsx / pptx / csv / json）和图片都支持，按轮次分组，可在手机内直接打开预览
 
 ## 架构
