@@ -2762,6 +2762,13 @@
         if (event.target.closest(".chat-row, .contact-row")) return;
       }
 
+      const dirHit = event.target.closest("[data-file-dir]");
+      if (dirHit) {
+        event.preventDefault();
+        void openWorkspaceFiles(dirHit.dataset.fileDir || "");
+        return;
+      }
+
       const fileHit = event.target.closest("[data-file]");
       if (fileHit) {
         event.preventDefault();
@@ -3075,6 +3082,18 @@
         location.hash = "#/" + (state.tab || "chats");
       } else if (act === "chat-more") {
         openChatTools();
+      } else if (act === "open-models") {
+        openModelsSheet();
+      } else if (act === "open-permissions") {
+        openPermissionsSheet();
+      } else if (act === "open-billing") {
+        void openBilling();
+      } else if (act === "open-attachments") {
+        openComposerMenu();
+      } else if (act === "open-files") {
+        void openWorkspaceFiles("");
+      } else if (act === "open-jobs") {
+        void openJobsSheet();
       } else if (act === "settings") {
         openSettings();
       } else if (act === "features") {
@@ -3599,11 +3618,115 @@
     }
   }
 
-  function toolTile(icon, label, toastText) {
-    return `<button class="tool-tile" data-act="toast" data-toast="${esc(toastText)}">
+  function toolTile(icon, label, action, toastText) {
+    const attrs =
+      action === "toast"
+        ? `data-act="toast" data-toast="${esc(toastText || label + "（暂未接入）")}"`
+        : `data-act="${esc(action)}"`;
+    return `<button class="tool-tile" ${attrs}>
       <span class="tool-ic"><svg class="ic"><use href="#${icon}"/></svg></span>
       <span class="tool-label">${esc(label)}</span>
     </button>`;
+  }
+
+  function openModelsSheet() {
+    const models = state.liveState?.models ?? [];
+    const current = state.liveState?.defaultModel ?? "";
+    const rows = models
+      .map((model) => {
+        const active = model.ref === current;
+        const reasoning = Array.isArray(model.reasoning?.efforts)
+          ? model.reasoning.efforts.map((effort) => effort.name).join(" / ")
+          : "";
+        return `<div class="session-row">
+          <span class="menu-ic ${active ? "ic-content" : "ic-muted"}"><svg class="ic"><use href="#i-spark"/></svg></span>
+          <span class="menu-label">${esc(model.name || model.id || model.ref)}
+            <span class="menu-sub">${esc(model.providerName || model.provider || "")}${reasoning ? " · " + esc(reasoning) : ""}</span>
+          </span>
+          ${active ? '<span class="state done">当前</span>' : ""}
+        </div>`;
+      })
+      .join("");
+    openSheet(`<h3>模型</h3>
+      <p class="sheet-sub">当前会话可用模型。切换入口需要接 DSH 设置接口，先把状态展示出来。</p>
+      ${rows || '<p class="sheet-sub">没有读取到模型列表。</p>'}
+      <p class="hint">当前默认模型：${esc(current || "未设置")}</p>`);
+  }
+
+  function openPermissionsSheet() {
+    const approvals = state.pending?.approvals ?? [];
+    const questions = state.pending?.questions ?? [];
+    const rows = [
+      ...approvals.map((item) => `<div class="session-row"><span class="menu-ic ic-content"><svg class="ic"><use href="#i-shield"/></svg></span><span class="menu-label">${esc(item.toolName || "工具审批")}<span class="menu-sub">${esc(item.sessionId || "")}</span></span><span class="state wait">待审批</span></div>`),
+      ...questions.map((item) => `<div class="session-row"><span class="menu-ic ic-research"><svg class="ic"><use href="#i-bell"/></svg></span><span class="menu-label">选择题<span class="menu-sub">${esc(item.sessionId || "")}</span></span><span class="state wait">待回答</span></div>`)
+    ].join("");
+    openSheet(`<h3>权限</h3>
+      <p class="sheet-sub">当前待处理：${approvals.length} 个审批、${questions.length} 个选择题。</p>
+      ${rows || '<p class="sheet-sub">暂无待处理审批。审批策略由 DSH 会话设置决定。</p>'}
+      <p class="hint">手机端只展示和处理当前审批；修改权限预设需要接 DSH 设置接口。</p>`);
+  }
+
+  async function openJobsSheet() {
+    openSheet('<h3>任务板</h3><p class="sheet-sub">正在读取任务板…</p>');
+    try {
+      const data = await liveFetch("/__im/tasks");
+      const tasks = data.tasks ?? [];
+      const rows = tasks
+        .slice()
+        .reverse()
+        .slice(0, 60)
+        .map((task) => `<div class="session-row">
+          <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-task"/></svg></span>
+          <span class="menu-label">${esc(task.title || task.id)}
+            <span class="menu-sub">${esc(task.owner || "未分配")} · ${esc(task.priority || "")} · ${esc(task.due || "")}</span>
+          </span>
+          <span class="state ${task.status === "completed" ? "done" : task.status === "blocked" ? "wait" : "running"}">${esc(task.status || "")}</span>
+        </div>`)
+        .join("");
+      openSheet(`<h3>任务板</h3><p class="sheet-sub">来自任务板的最新 ${tasks.length} 条任务。</p>${rows || '<p class="sheet-sub">暂无任务。</p>'}`);
+    } catch (error) {
+      openSheet(`<h3>任务板</h3><p class="sheet-sub">读取失败：${esc(error.message)}</p><div class="sheet-footer"><button class="btn" data-act="sheet-close">关闭</button></div>`);
+    }
+  }
+
+  function formatBytes(size) {
+    const n = Number(size) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  async function openWorkspaceFiles(rel) {
+    const current = rel || "";
+    openSheet('<h3>文件</h3><p class="sheet-sub">正在读取工作区…</p>');
+    try {
+      const data = await liveFetch("/__im/workspace-files?path=" + encodeURIComponent(current));
+      const items = data.items ?? [];
+      const crumbs = current
+        .split("/")
+        .filter(Boolean)
+        .map((part, index, all) => {
+          const target = all.slice(0, index + 1).join("/");
+          return `<button class="menu-row" data-file-dir="${esc(target)}" style="display:inline-flex;width:auto;padding:4px 6px">${esc(part)}</button>`;
+        })
+        .join('<span style="color:var(--text-3)">/</span>');
+      const rows = [
+        current
+          ? `<button class="menu-row" data-file-dir="${esc(current.split("/").slice(0, -1).join("/"))}"><span class="menu-ic"><svg class="ic"><use href="#i-back"/></svg></span><span class="menu-label">..</span></button>`
+          : "",
+        ...items.map((item) =>
+          item.type === "dir"
+            ? `<button class="menu-row" data-file-dir="${esc(item.path)}"><span class="menu-ic ic-project"><svg class="ic"><use href="#i-folder"/></svg></span><span class="menu-label">${esc(item.name)}<span class="menu-sub">文件夹</span></span><svg class="ic chev"><use href="#i-chev"/></svg></button>`
+            : `<button class="menu-row" data-file="${esc(item.path)}" data-file-title="${esc(item.name)}"><span class="menu-ic ic-muted"><svg class="ic"><use href="#i-doc"/></svg></span><span class="menu-label">${esc(item.name)}<span class="menu-sub">${formatBytes(item.size)}</span></span><svg class="ic chev"><use href="#i-chev"/></svg></button>`
+        )
+      ].join("");
+      openSheet(`<h3>文件</h3>
+        <p class="sheet-sub">工作区 / ${crumbs || "根目录"}</p>
+        <div class="group-card">${rows || '<p class="sheet-sub">空目录。</p>'}</div>
+        <div class="sheet-footer"><button class="btn" data-act="sheet-close">关闭</button></div>`);
+    } catch (error) {
+      openSheet(`<h3>文件</h3><p class="sheet-sub">读取失败：${esc(error.message)}</p><div class="sheet-footer"><button class="btn" data-act="sheet-close">关闭</button></div>`);
+    }
   }
 
   function openChatTools() {
@@ -3611,19 +3734,19 @@
     if (!conv) return;
     const isGroup = conv.kind === "group";
     const tools = [
-      ["i-spark", "模型", "模型选择（原型占位）"],
-      ["i-shield", "权限", "权限预设与审批（原型占位）"],
-      ["i-usage", "用量", "上下文与 token 用量（原型占位）"],
-      ["i-plus", "附件", "附件 / 文件上传（原型占位）"],
-      ["i-folder", "文件", "工作区文件（原型占位）"],
-      ["i-browser", "浏览器", "浏览器（原型占位）"],
-      ["i-task", "Jobs", "后台任务（原型占位）"],
-      ["i-clock", "定时", "定时任务（原型占位）"]
+      ["i-spark", "模型", "open-models"],
+      ["i-shield", "权限", "open-permissions"],
+      ["i-usage", "用量", "open-billing"],
+      ["i-plus", "附件", "open-attachments"],
+      ["i-folder", "文件", "open-files"],
+      ["i-browser", "浏览器", "toast", "桌面端浏览器暂未接入"],
+      ["i-task", "任务板", "open-jobs"],
+      ["i-clock", "定时", "toast", "定时任务暂未接入"]
     ];
     const title = isGroup ? conv.name : state.botMap[conv.id]?.name || conv.name || "会话";
     openSheet(`<h3>会话工具</h3>
       <p class="sheet-sub">${esc(title)} · 常用能力收在这里。</p>
-      <div class="tool-grid">${tools.map(([icon, label, toastText]) => toolTile(icon, label, toastText)).join("")}</div>
+      <div class="tool-grid">${tools.map(([icon, label, action, toastText]) => toolTile(icon, label, action, toastText)).join("")}</div>
       <div class="group-card" style="margin-top:14px">
         <button class="menu-row" data-act="chat-members">
           <span class="menu-ic"><svg class="ic"><use href="#i-contacts"/></svg></span>

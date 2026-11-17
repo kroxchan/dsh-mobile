@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261117o";
+const PROTO_VERSION = "20261117p";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -2041,6 +2041,47 @@ async function serveIm(req, res, url) {
           text,
         });
       });
+      return;
+    }
+
+    if (pathname === "/__im/workspace-files" && req.method === "GET") {
+      const rel = String(url.searchParams.get("path") ?? "");
+      const workspace = path.resolve(path.join(DSH_HOME, "bot", "workspace"));
+      const target = path.resolve(workspace, rel || ".");
+      if (target !== workspace && !target.startsWith(workspace + path.sep)) {
+        jsonResponse(res, 403, { ok: false, error: { message: "forbidden" } });
+        return;
+      }
+      try {
+        const entries = fs.readdirSync(target, { withFileTypes: true })
+          .filter((entry) => !entry.name.startsWith("."))
+          .map((entry) => {
+            const full = path.join(target, entry.name);
+            let size = 0;
+            let mtime = 0;
+            try {
+              const stat = fs.statSync(full);
+              size = stat.size;
+              mtime = stat.mtimeMs;
+            } catch {}
+            return {
+              name: entry.name,
+              path: path.relative(workspace, full).split(path.sep).join("/"),
+              type: entry.isDirectory() ? "dir" : "file",
+              size,
+              mtime,
+            };
+          })
+          .sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1))
+          .slice(0, 300);
+        jsonResponse(res, 200, {
+          ok: true,
+          path: path.relative(workspace, target).split(path.sep).join("/"),
+          items: entries,
+        });
+      } catch (error) {
+        jsonResponse(res, 400, { ok: false, error: { message: String(error?.message ?? "读取失败") } });
+      }
       return;
     }
 
