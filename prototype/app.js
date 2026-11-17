@@ -76,6 +76,7 @@
     pendingRuns: {},
     deliverables: [],
     trace: [],
+    traceToken: 0,
     traceSheetOpen: false,
     notifySystem: false,
     notifyRunning: null,
@@ -600,6 +601,7 @@
   }
 
   async function loadTrace(id) {
+    const token = state.traceToken ?? 0;
     if (!state.live || !id) {
       state.trace = [];
       renderTraceBar();
@@ -607,7 +609,7 @@
     }
     try {
       const data = await liveFetch("/__im/trace?id=" + encodeURIComponent(id));
-      if (state.chatId !== id) return;
+      if (state.chatId !== id || state.traceToken !== token) return;
       state.trace = data.items ?? [];
       renderTraceBar();
       if (state.traceSheetOpen) renderTraceSheetBody();
@@ -1733,6 +1735,14 @@
     }
     state.chatId = id;
     conv.unread = 0;
+    // 切换会话时立刻清掉上一个会话的过程/产物，避免异步响应串台。
+    state.traceToken = (state.traceToken ?? 0) + 1;
+    state.trace = [];
+    state.deliverables = [];
+    if (state.traceSheetOpen) closeSheet();
+    stopTraceSheetTimer();
+    renderTraceBar();
+    renderDeliverableBar();
     if (state.live) {
       if (!state.messages[id]) {
         state.messages[id] = [{ id: "loading", from: "system", time: "", type: "system", text: "正在加载消息…" }];
