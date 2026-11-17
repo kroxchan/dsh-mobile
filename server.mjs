@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261117h";
+const PROTO_VERSION = "20261117i";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -427,6 +427,159 @@ function connectRemoteEvents() {
     });
   });
   request.on("error", () => scheduleEventReconnect());
+  request.end();
+}
+
+/* ---------------------- 会话 assistant-stream：实时思考 ---------------------- */
+let liveFollowSocket = null;
+let liveFollowBuffer = Buffer.alloc(0);
+let liveFollowSession = "";
+let liveFollowStream = "";
+let liveTraceText = "";
+let liveTraceTurn = null;
+let liveTraceStep = null;
+let liveTraceAt = 0;
+
+function sendLiveWsFrame(text) {
+  if (liveFollowSocket === null || liveFollowSocket.destroyed) return;
+  const payload = Buffer.from(text, "utf8");
+  let header;
+  if (payload.length < 126) header = Buffer.from([0x81, 0x80 | payload.length]);
+  else if (payload.length < 65536) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81; header[1] = 0xfe; header.writeUInt16BE(payload.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81; header[1] = 0xff;
+    header.writeUInt32BE(0, 2); header.writeUInt32BE(payload.length, 6);
+  }
+  const mask = crypto.randomBytes(4);
+  const masked = Buffer.alloc(payload.length);
+  for (let i = 0; i < payload.length; i += 1) masked[i] = payload[i] ^ mask[i % 4];
+  liveFollowSocket.write(Buffer.concat([header, mask, masked]));
+}
+
+function closeLiveFollow() {
+  if (liveFollowSocket !== null) {
+    try { liveFollowSocket.destroy(); } catch {}
+    liveFollowSocket = null;
+  }
+  liveFollowBuffer = Buffer.alloc(0);
+  liveFollowSession = "";
+  liveFollowStream = "";
+}
+
+function handleLiveFollowValue(value) {
+  if (value === null || typeof value !== "object") return;
+  if (value.type === "assistant-stream" && value.frame !== null && typeof value.frame === "object") {
+    const frame = value.frame;
+    if (frame.type === "start") {
+      liveTraceText = "";
+      liveTraceTurn = frame.turn ?? null;
+      liveTraceStep = frame.step ?? null;
+      liveTraceAt = Date.now();
+    } else if (frame.type === "chunk" && frame.chunk !== null && typeof frame.chunk === "object") {
+      const chunk = frame.chunk;
+      if (chunk.type === "reasoning-delta" && typeof chunk.text === "string") {
+        liveTraceText = (liveTraceText + chunk.text).slice(-4000);
+        liveTraceAt = Date.now();
+      }
+    } else if (frame.type === "end") {
+      liveTraceAt = Date.now();
+    }
+  } else if (value.type === "event" && value.event !== null && typeof value.event === "object") {
+    if (value.event.type === "assistant/message") {
+      // 已提交的思考会由 /__im/trace 从 session log 读取，实时草稿可以清掉避免重复。
+      liveTraceText = "";
+      liveTraceTurn = value.event.data?.turn ?? liveTraceTurn;
+      liveTraceStep = value.event.data?.step ?? liveTraceStep;
+    }
+  }
+}
+
+function parseLiveFollowFrames() {
+  for (;;) {
+    const buffer = liveFollowBuffer;
+    if (buffer.length < 2) return;
+    const opcode = buffer[0] & 0x0f;
+    const masked = (buffer[1] & 0x80) !== 0;
+    let length = buffer[1] & 0x7f;
+    let offset = 2;
+    if (length === 126) { if (buffer.length < 4) return; length = buffer.readUInt16BE(2); offset = 4; }
+    else if (length === 127) { if (buffer.length < 10) return; length = buffer.readUInt32BE(2) * 2 ** 32 + buffer.readUInt32BE(6); offset = 10; }
+    let maskKey = null;
+    if (masked) { if (buffer.length < offset + 4) return; maskKey = buffer.subarray(offset, offset + 4); offset += 4; }
+    if (buffer.length < offset + length) return;
+    let payload = buffer.subarray(offset, offset + length);
+    if (maskKey !== null) {
+      const copy = Buffer.from(payload);
+      for (let i = 0; i < copy.length; i += 1) copy[i] ^= maskKey[i % 4];
+      payload = copy;
+    }
+    liveFollowBuffer = buffer.subarray(offset + length);
+    if (opcode === 0x9) {
+      try { liveFollowSocket?.write(Buffer.from([0x8a, 0x80, 0, 0, 0, 0])); } catch {}
+    } else if (opcode === 0x1) {
+      let message;
+      try { message = JSON.parse(payload.toString("utf8")); } catch { continue; }
+      if (message.streamId !== liveFollowStream) continue;
+      if (message.type === "item") handleLiveFollowValue(message.value);
+      else if (message.type === "error") log("实时思考流错误");
+      else if (message.type === "end") liveTraceAt = Date.now();
+    } else if (opcode === 0x8) {
+      closeLiveFollow();
+      return;
+    }
+  }
+}
+
+function ensureLiveFollow(sessionId) {
+  if (sessionId === "") return;
+  if (liveFollowSocket !== null && liveFollowSession === sessionId) return;
+  closeLiveFollow();
+  const port = upstream.port ?? HINT_PORT;
+  const cookie = upstreamCookie() ?? "";
+  const key = crypto.randomBytes(16).toString("base64");
+  const request = http.request({
+    host: UPSTREAM_HOST,
+    port,
+    path: "/api/remote.mux",
+    method: "GET",
+    headers: {
+      host: `${UPSTREAM_HOST}:${port}`,
+      connection: "Upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": key,
+      "sec-websocket-version": "13",
+      origin: `http://${UPSTREAM_HOST}:${port}`,
+      "user-agent": "dsh-mobile-gateway",
+      cookie,
+    },
+  });
+  request.on("upgrade", (response, socket, head) => {
+    liveFollowSocket = socket;
+    liveFollowSession = sessionId;
+    liveFollowStream = "trace-" + sessionId;
+    liveFollowBuffer = Buffer.alloc(0);
+    socket.setNoDelay(true);
+    if (head !== undefined && head.length > 0) {
+      liveFollowBuffer = Buffer.concat([liveFollowBuffer, head]);
+      parseLiveFollowFrames();
+    }
+    sendLiveWsFrame(JSON.stringify({
+      type: "open",
+      streamId: liveFollowStream,
+      endpoint: "session/follow",
+      payload: { args: { request: { address: { kind: "session", sessionId }, assistantStream: true } } },
+    }));
+    socket.on("data", (chunk) => {
+      liveFollowBuffer = Buffer.concat([liveFollowBuffer, chunk]);
+      parseLiveFollowFrames();
+    });
+    socket.on("close", () => { if (liveFollowSession === sessionId) closeLiveFollow(); });
+    socket.on("error", () => { if (liveFollowSession === sessionId) closeLiveFollow(); });
+  });
+  request.on("error", () => {});
   request.end();
 }
 
@@ -1779,7 +1932,27 @@ async function serveIm(req, res, url) {
       } else {
         items = latestTurnTrace(traceItemsFromSession(id, "DSH Agent"));
       }
-      jsonResponse(res, 200, { ok: true, items: items.slice(-limit) });
+      let liveSession = "";
+      let liveSender = "DSH Agent";
+      if (room === undefined) {
+        liveSession = bot?.sessionId ?? id;
+        liveSender = bot?.name ?? "DSH Agent";
+        ensureLiveFollow(liveSession);
+      }
+      const page = items.slice(-limit);
+      if (liveSession !== "" && liveFollowSession === liveSession && liveTraceText.trim() !== "") {
+        page.push({
+          id: "live-" + liveSession,
+          kind: "thinking",
+          text: liveTraceText,
+          sender: liveSender,
+          turn: liveTraceTurn,
+          step: liveTraceStep,
+          time: Date.now(),
+          live: true,
+        });
+      }
+      jsonResponse(res, 200, { ok: true, items: page });
       return;
     }
 
