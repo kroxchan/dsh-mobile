@@ -47,10 +47,12 @@
     chatId: null,
     searchChat: "",
     searchContact: "",
-    bots: D.BOTS.map((b) => ({ ...b })),
+    // 生产/原型一律从空状态启动；真实数据由 liveLoadState 拉取。
+    // 不再把 data.js 的示例会话/消息灌进来，避免被误认为用户发过的内容。
+    bots: [],
     botMap: {},
-    convs: D.CONVERSATIONS.map((c) => ({ ...c })),
-    messages: JSON.parse(JSON.stringify(D.MESSAGES)),
+    convs: [],
+    messages: {},
     theme: "auto",
     replyTimer: null,
     addBotDept: "content",
@@ -71,6 +73,7 @@
     liveActivity: {},
     sessionWork: {},
     pending: { approvals: [], questions: [] },
+    pendingRuns: {},
     deliverables: [],
     trace: [],
     traceSheetOpen: false,
@@ -274,6 +277,8 @@
     if (sessionStatus) return statusFromWork(sessionStatus, "");
     if (work.turns?.[conv.id]) return { text: "处理中…", meta: "", since: work.turns[conv.id] };
     if (activity[conv.id]) return { text: activityText(activity[conv.id]), meta: "", since: undefined };
+    const pendingSince = state.pendingRuns?.[conv.id];
+    if (pendingSince) return { text: "已发送，正在处理…", meta: "", since: pendingSince };
     return null;
   }
 
@@ -1099,6 +1104,7 @@
       if (data.sessionStatus !== undefined) {
         if (data.sessionStatus) {
           state.sessionWork[id] = data.sessionStatus;
+          delete state.pendingRuns[id];
           if (state.chatId === id) state.liveRunning = true;
         } else {
           delete state.sessionWork[id];
@@ -1116,6 +1122,16 @@
       state.messages[id] = [...preserved, ...messages].filter(
         (message) => message.id !== "loading"
       );
+      const pendingAt = state.pendingRuns?.[id];
+      if (pendingAt) {
+        const last = messages.at(-1);
+        const responded =
+          last &&
+          last.from === "them" &&
+          last.type !== "typing" &&
+          (last.rawTime || 0) >= pendingAt - 1000;
+        if (responded || Date.now() - pendingAt > 30000) delete state.pendingRuns[id];
+      }
       if (messages.length === 0 && state.messages[id].length === 0) {
         state.messages[id] = [];
       }
@@ -1240,6 +1256,7 @@
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, text })
     });
+    updateLiveStatus();
     void loadTrace(id);
     setTimeout(() => { void loadTrace(id); updateLiveStatus(); }, 1000);
     setTimeout(() => liveLoadChat(id, true), 900);
@@ -2210,7 +2227,13 @@
 
     // 真实模式：发给本机 DSH / ds-bot，不再用本地模拟回复
     if (state.live) {
-      liveSend(chatId, text).catch((error) => showToast("发送失败：" + error.message));
+      state.pendingRuns[chatId] = Date.now();
+      updateLiveStatus();
+      liveSend(chatId, text).catch((error) => {
+        delete state.pendingRuns[chatId];
+        updateLiveStatus();
+        showToast("发送失败：" + error.message);
+      });
       return;
     }
 
