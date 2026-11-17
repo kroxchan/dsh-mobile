@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261117n";
+const PROTO_VERSION = "20261117o";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -439,6 +439,7 @@ let liveTraceText = "";
 let liveTraceTurn = null;
 let liveTraceStep = null;
 let liveTraceAt = 0;
+let liveTraceActive = false;
 
 function sendLiveWsFrame(text) {
   if (liveFollowSocket === null || liveFollowSocket.destroyed) return;
@@ -467,6 +468,8 @@ function closeLiveFollow() {
   liveFollowBuffer = Buffer.alloc(0);
   liveFollowSession = "";
   liveFollowStream = "";
+  liveTraceText = "";
+  liveTraceActive = false;
 }
 
 function handleLiveFollowValue(value) {
@@ -475,22 +478,26 @@ function handleLiveFollowValue(value) {
     const frame = value.frame;
     if (frame.type === "start") {
       liveTraceText = "";
+      liveTraceActive = true;
       liveTraceTurn = frame.turn ?? null;
       liveTraceStep = frame.step ?? null;
       liveTraceAt = Date.now();
     } else if (frame.type === "chunk" && frame.chunk !== null && typeof frame.chunk === "object") {
       const chunk = frame.chunk;
-      if (chunk.type === "reasoning-delta" && typeof chunk.text === "string") {
-        liveTraceText = (liveTraceText + chunk.text).slice(-4000);
+      if (liveTraceActive && chunk.type === "reasoning-delta" && typeof chunk.text === "string") {
+        const clean = chunk.text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+        liveTraceText = (liveTraceText + clean).slice(-4000);
         liveTraceAt = Date.now();
       }
     } else if (frame.type === "end") {
+      liveTraceActive = false;
       liveTraceAt = Date.now();
     }
   } else if (value.type === "event" && value.event !== null && typeof value.event === "object") {
     if (value.event.type === "assistant/message") {
       // 已提交的思考会由 /__im/trace 从 session log 读取，实时草稿可以清掉避免重复。
       liveTraceText = "";
+      liveTraceActive = false;
       liveTraceTurn = value.event.data?.turn ?? liveTraceTurn;
       liveTraceStep = value.event.data?.step ?? liveTraceStep;
     }

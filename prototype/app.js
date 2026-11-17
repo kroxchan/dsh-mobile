@@ -676,14 +676,25 @@
     traceSheetTimer = setInterval(() => {
       if (!state.traceSheetOpen) return;
       if (state.chatId) void loadTrace(state.chatId);
-    }, 1000);
+    }, 500);
   }
 
   function traceSheetHTML() {
-    const items = (state.trace ?? []).filter((item) => item.live !== true);
-    if (items.length === 0) return '<p class="sheet-sub">本轮首条思考正在生成…</p>';
-    let lastTurn = null;
+    const all = state.trace ?? [];
+    const live = all.find((item) => item.live === true);
+    const items = all.filter((item) => item.live !== true);
     const parts = [];
+    if (live) {
+      const text = String(live.text ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+      if (text.trim() !== "") {
+        parts.push('<div class="trace trace-think trace-live-card" id="traceLiveCard" open><summary><span class="trace-k">思考过程</span><span class="trace-meta">生成中</span></summary><div class="trace-body"><pre id="traceLiveText">' + esc(text) + "</pre></div></div>");
+      }
+    }
+    if (items.length === 0) {
+      if (parts.length === 0) return '<p class="sheet-sub">本轮首条思考正在生成…</p>';
+      return parts.join("");
+    }
+    let lastTurn = null;
     for (const item of items) {
       const turn = Number(item.turn) || 0;
       if (turn > 0 && turn !== lastTurn) {
@@ -702,18 +713,20 @@
   function renderTraceSheetBody() {
     const body = $("#traceSheetBody");
     if (!body) return;
-    const live = (state.trace ?? []).find((item) => item.live === true);
-    const liveEl = $("#traceLivePreview");
-    if (liveEl) {
-      if (live) {
-        liveEl.hidden = false;
-        liveEl.innerHTML = '<div class="trace-live-k">实时思考</div><div class="trace-live-text">' + esc(String(live.text ?? "")) + "</div>";
-      } else {
-        liveEl.hidden = true;
-        liveEl.innerHTML = "";
-      }
+    const all = state.trace ?? [];
+    const live = all.find((item) => item.live === true);
+    const committed = all.filter((item) => item.live !== true);
+    const sig = committed.map((item) => item.id).join("|") + "|live:" + (live ? "1" : "0");
+    const existing = document.getElementById("traceLiveText");
+    if (body.dataset.sig === sig && existing !== null) {
+      const text = String(live?.text ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+      existing.textContent = text;
+      const card = document.getElementById("traceLiveCard");
+      if (card) card.hidden = text.trim() === "";
+      return;
     }
     body.innerHTML = traceSheetHTML();
+    body.dataset.sig = sig;
     const sheet = el.sheet;
     if (sheet) {
       const fromBottom = sheet.scrollHeight - sheet.scrollTop;
@@ -722,7 +735,7 @@
   }
 
   function openTraceSheet() {
-    openSheet('<h3>本轮处理过程</h3><p class="sheet-sub">实时思考固定在顶部；工具卡点开看参数和结果。</p><div id="traceLivePreview" class="trace-live" hidden></div><div id="traceSheetBody">' + traceSheetHTML() + "</div>");
+    openSheet('<h3>本轮处理过程</h3><p class="sheet-sub">工具卡点开看参数和结果。</p><div id="traceSheetBody">' + traceSheetHTML() + "</div>");
     renderTraceSheetBody();
     startTraceSheetTimer();
   }
