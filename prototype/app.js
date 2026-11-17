@@ -675,8 +675,8 @@
   }
 
   function traceSheetHTML() {
-    const items = state.trace ?? [];
-    if (items.length === 0) return '<p class="sheet-sub">本轮还没有处理记录。</p>';
+    const items = (state.trace ?? []).filter((item) => item.live !== true);
+    if (items.length === 0) return '<p class="sheet-sub">本轮首条思考正在生成…</p>';
     let lastTurn = null;
     const parts = [];
     for (const item of items) {
@@ -697,6 +697,17 @@
   function renderTraceSheetBody() {
     const body = $("#traceSheetBody");
     if (!body) return;
+    const live = (state.trace ?? []).find((item) => item.live === true);
+    const liveEl = $("#traceLivePreview");
+    if (liveEl) {
+      if (live) {
+        liveEl.hidden = false;
+        liveEl.innerHTML = '<div class="trace-live-k">实时思考</div><div class="trace-live-text">' + esc(String(live.text ?? "")) + "</div>";
+      } else {
+        liveEl.hidden = true;
+        liveEl.innerHTML = "";
+      }
+    }
     body.innerHTML = traceSheetHTML();
     const sheet = el.sheet;
     if (sheet) {
@@ -706,7 +717,8 @@
   }
 
   function openTraceSheet() {
-    openSheet('<h3>本轮处理过程</h3><p class="sheet-sub">处理中会每秒刷新；点工具卡看参数和结果。</p><div id="traceSheetBody">' + traceSheetHTML() + "</div>");
+    openSheet('<h3>本轮处理过程</h3><p class="sheet-sub">实时思考固定在顶部；工具卡点开看参数和结果。</p><div id="traceLivePreview" class="trace-live" hidden></div><div id="traceSheetBody">' + traceSheetHTML() + "</div>");
+    renderTraceSheetBody();
     startTraceSheetTimer();
   }
 

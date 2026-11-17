@@ -1703,3 +1703,23 @@ body {
 }
 .trace-line-t b { font-weight: 500; color: var(--text-2); }
 .trace-line.is-err .trace-line-k, .trace-line.is-err .trace-line-t { color: var(--danger); }
+
+/* 详情顶部固定实时思考 */
+.trace-live {
+  margin: 8px 0 10px;
+  padding: 9px 10px;
+  border: 0.5px solid color-mix(in srgb, var(--accent) 28%, var(--hair));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+.trace-live[hidden] { display: none !important; }
+.trace-live-k { font-size: 11px; color: var(--accent); margin-bottom: 4px; }
+.trace-live-text {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
