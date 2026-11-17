@@ -72,6 +72,8 @@
     sessionWork: {},
     pending: { approvals: [], questions: [] },
     deliverables: [],
+    trace: [],
+    traceSheetOpen: false,
     notifySystem: false,
     notifyRunning: null,
     notifySeen: {},
@@ -280,19 +282,8 @@
     const conv = currentConv();
     const live = state.live && conv ? liveStatusFor(conv) : null;
     const typing = $("#liveTyping");
-    const typingText = $("#liveTypingText");
-    const typingMeta = $("#liveTypingMeta");
-    if (typing) {
-      typing.hidden = !live;
-      if (live) {
-        const seconds = live.since ? Math.max(0, Math.floor((Date.now() - live.since) / 1000)) : 0;
-        if (typingText) typingText.textContent = seconds > 0 ? `${live.text} · ${seconds}s` : live.text;
-        if (typingMeta) {
-          typingMeta.textContent = live.meta || "";
-          typingMeta.hidden = !live.meta;
-        }
-      }
-    }
+    if (typing) typing.hidden = true;
+    renderTraceBar();
     updateComposerSend();
     if (!conv || !state.chatId) return;
     const header = $("#chatStatus");
@@ -351,6 +342,7 @@
     ];
     rebuildBotMap();
     let extraConvs = [];
+    const previousConvs = Array.isArray(state.convs) ? state.convs.slice() : [];
     state.convs = [      ...(snapshot.rooms ?? []).map((room) => ({
         ...mapLiveRoom(room),
         lastAt: Number(state.lastAt[room.id]) || 0
@@ -377,6 +369,10 @@
         };
       })
     ].filter((conv) => !state.hidden.includes(conv.id));
+    const pinnedPrevious = previousConvs.filter(
+      (conv) => isPinned(conv) && !state.convs.some((next) => next.id === conv.id)
+    );
+    if (pinnedPrevious.length > 0) state.convs = [...state.convs, ...pinnedPrevious];
     state.live = true;
     let savedTarget = null;
     try {
@@ -596,6 +592,122 @@
       renderCardDock();
       notifyPendingCards();
     } catch {}
+  }
+
+  async function loadTrace(id) {
+    if (!state.live || !id) {
+      state.trace = [];
+      renderTraceBar();
+      return;
+    }
+    try {
+      const data = await liveFetch("/__im/trace?id=" + encodeURIComponent(id));
+      if (state.chatId !== id) return;
+      state.trace = data.items ?? [];
+      renderTraceBar();
+      if (state.traceSheetOpen) renderTraceSheetBody();
+    } catch {}
+  }
+
+  function toolArgSummary(args) {
+    const text = String(args ?? "");
+    const match = text.match(/"(?:command|file_path|path|query|url)"\s*:\s*"([^"]{0,140})"/);
+    return (match ? match[1] : text).replace(/\s+/g, " ").trim().slice(0, 64);
+  }
+
+  function renderTraceBar() {
+    const bar = $("#traceBar");
+    if (!bar) return;
+    const items = state.trace ?? [];
+    const live = state.live && state.chatId ? liveStatusFor(currentConv()) : null;
+    const running = !!live;
+    const show = !!(state.chatId && (items.length > 0 || running));
+    bar.hidden = !show;
+    if (!show) return;
+    const seconds = live && live.since ? Math.max(0, Math.floor((Date.now() - live.since) / 1000)) : 0;
+    const textEl = $("#traceBarText");
+    const countEl = $("#traceCount");
+    const linesEl = $("#traceBarLines");
+    let label = running ? "处理中" : "最近一轮";
+    if (running && seconds > 0) label += " · " + seconds + "s";
+    if (!running && items.length > 0) label += " · " + items.length + " 步";
+    if (textEl) textEl.textContent = label;
+    if (countEl) countEl.textContent = items.length > 0 ? items.length + " 步" : "";
+    if (linesEl) {
+      const last = items.slice(-1);
+      if (last.length === 0) {
+        linesEl.innerHTML = '<div class="trace-line"><span class="trace-line-k">·</span><span class="trace-line-t">等待思考或工具输出…</span></div>';
+      } else {
+        linesEl.innerHTML = last
+          .map((item) => {
+            const who = item.sender ? '<span class="trace-line-who">' + esc(item.sender) + "</span>" : "";
+            if (item.kind === "thinking") {
+              const text = String(item.text ?? "").replace(/\s+/g, " ").trim().slice(0, 90);
+              return '<div class="trace-line">' + who + '<span class="trace-line-t">' + esc(text) + "</span></div>";
+            }
+            const name = String(item.name || "tool");
+            const summary = toolArgSummary(item.args);
+            return '<div class="trace-line' + (item.isError ? " is-err" : "") + '">' + who + '<span class="trace-line-t"><b>' + esc(name) + "</b>" + (summary ? " " + esc(summary) : "") + "</span></div>";
+          })
+          .join("");
+      }
+    }
+    bar.classList.toggle("is-running", running);
+  }
+
+  let traceSheetTimer = null;
+
+  function stopTraceSheetTimer() {
+    if (traceSheetTimer !== null) {
+      clearInterval(traceSheetTimer);
+      traceSheetTimer = null;
+    }
+    state.traceSheetOpen = false;
+  }
+
+  function startTraceSheetTimer() {
+    stopTraceSheetTimer();
+    state.traceSheetOpen = true;
+    traceSheetTimer = setInterval(() => {
+      if (!state.traceSheetOpen) return;
+      if (state.chatId) void loadTrace(state.chatId);
+    }, 1000);
+  }
+
+  function traceSheetHTML() {
+    const items = state.trace ?? [];
+    if (items.length === 0) return '<p class="sheet-sub">本轮还没有处理记录。</p>';
+    let lastTurn = null;
+    const parts = [];
+    for (const item of items) {
+      const turn = Number(item.turn) || 0;
+      if (turn > 0 && turn !== lastTurn) {
+        parts.push('<div class="trace-turn">第 ' + turn + " 轮</div>");
+        lastTurn = turn;
+      }
+      parts.push(
+        item.kind === "thinking"
+          ? thinkingTraceHTML(item)
+          : toolTraceHTML({ sender: item.sender, tool: item })
+      );
+    }
+    return parts.join("");
+  }
+
+  function renderTraceSheetBody() {
+    const body = $("#traceSheetBody");
+    if (!body) return;
+    body.innerHTML = traceSheetHTML();
+    const sheet = el.sheet;
+    if (sheet) {
+      const fromBottom = sheet.scrollHeight - sheet.scrollTop;
+      if (fromBottom < 180) sheet.scrollTop = sheet.scrollHeight;
+    }
+  }
+
+  function openTraceSheet() {
+    openSheet('<h3>本轮处理过程</h3><p class="sheet-sub">处理中会每秒刷新；点工具卡看参数和结果。</p><div id="traceSheetBody">' + traceSheetHTML() + "</div>");
+    startTraceSheetTimer();
   }
 
   async function loadDeliverables(id) {
@@ -917,6 +1029,7 @@
   }
 
   function liveMessages(items) {
+    items = items.filter((item) => item.kind !== "thinking" && item.kind !== "tool");
     const byName = new Map(state.bots.map((bot) => [bot.name, bot.id]));
     return items.map((item) => ({
       id: item.id ?? String(item.seq),
@@ -936,8 +1049,28 @@
               path: item.path ?? ""
             }
           : undefined,
-      type: item.kind === "event" ? "system" : item.kind === "file" ? "file" : "text",
-      text: item.text ?? ""
+      type:
+        item.kind === "event"
+          ? "system"
+          : item.kind === "file"
+            ? "file"
+            : item.kind === "thinking"
+              ? "thinking"
+              : item.kind === "tool"
+                ? "tool"
+                : "text",
+      text: item.text ?? "",
+      tool:
+        item.kind === "tool"
+          ? {
+              name: item.name ?? "tool",
+              args: item.args ?? "",
+              result: item.result ?? "",
+              status: item.status ?? "",
+              isError: !!item.isError,
+              durationMs: item.durationMs ?? null
+            }
+          : undefined
     }));
   }
 
@@ -951,14 +1084,6 @@
           if (message.from === "them" && !message.sender) message.sender = id;
         });
       }
-      const signature = id + "|" + messages.length + "|" + (messages.at(-1)?.id ?? "");
-      if (!force && state.liveLastChat === signature) return;
-      state.liveLastChat = signature;
-      const seqOf = (item) => Number(String(item.id ?? "").replace(/^[a-z]+/i, "")) || 0;
-      const minNew = messages.length > 0 ? Math.min(...messages.map(seqOf)) : Infinity;
-      const preserved = (state.messages[id] ?? []).filter(
-        (item) => seqOf(item) < minNew && !messages.some((next) => next.id === item.id)
-      );
       if (data.sessionStatus !== undefined) {
         if (data.sessionStatus) {
           state.sessionWork[id] = data.sessionStatus;
@@ -968,6 +1093,14 @@
         }
         updateLiveStatus();
       }
+      const signature = id + "|" + messages.length + "|" + (messages.at(-1)?.id ?? "");
+      if (!force && state.liveLastChat === signature) return;
+      state.liveLastChat = signature;
+      const seqOf = (item) => Number(String(item.id ?? "").replace(/^[a-z]+/i, "")) || 0;
+      const minNew = messages.length > 0 ? Math.min(...messages.map(seqOf)) : Infinity;
+      const preserved = (state.messages[id] ?? []).filter(
+        (item) => seqOf(item) < minNew && !messages.some((next) => next.id === item.id)
+      );
       state.messages[id] = [...preserved, ...messages].filter(
         (message) => message.id !== "loading"
       );
@@ -1048,7 +1181,10 @@
         state.pollTick = (state.pollTick ?? 0) + 1;
         if (state.pollTick % 2 === 0) void loadPending();
         else renderCardDock();
-        if (state.chatId) void loadDeliverables(state.chatId);
+        if (state.chatId) {
+          void loadDeliverables(state.chatId);
+          void loadTrace(state.chatId);
+        }
         const workBots = state.liveWork.bots ?? {};
         const activity = state.liveActivity;
         state.bots.forEach((bot) => {
@@ -1092,6 +1228,8 @@
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, text })
     });
+    void loadTrace(id);
+    setTimeout(() => { void loadTrace(id); updateLiveStatus(); }, 1000);
     setTimeout(() => liveLoadChat(id, true), 900);
   }
 
@@ -1298,11 +1436,15 @@
   }
 
   function pinKey(conv) {
-    return conv && conv.agentSession ? "__agent__" : conv ? conv.id : "";
+    return conv ? conv.id : "";
   }
 
   function isPinned(conv) {
-    return !!conv && (conv.pin === true || state.pins.includes(pinKey(conv)));
+    return !!conv && (
+      conv.pin === true ||
+      state.pins.includes(pinKey(conv)) ||
+      (conv.agentSession === true && state.pins.includes("__agent__"))
+    );
   }
 
   function touchConv(id) {
@@ -1600,6 +1742,7 @@
     updateLiveStatus();
     void loadPending();
     void loadDeliverables(id);
+    void loadTrace(id);
     resetComposer();
     let atTop = false;
     try {
@@ -1825,6 +1968,10 @@
           : "";
       if (caption !== "") body.push(`<div class="bubble">${renderMarkdown(caption)}</div>`);
       body.push(imageBubbleHTML(imagePath));
+    } else if (msg.type === "thinking") {
+      body.push(thinkingTraceHTML(msg));
+    } else if (msg.type === "tool") {
+      body.push(toolTraceHTML(msg));
     } else if (msg.type === "text" || msg.type === "typing") {
       const typing =
         msg.type === "typing"
@@ -1859,6 +2006,40 @@
 
     const avatar = mine ? "" : senderAvatar(msg);
     return `<div class="msg ${mine ? "me" : "them"}" data-msg="${esc(msg.id)}">${avatar}<div class="msg-body">${body.join("")}</div></div>`;
+  }
+
+  function thinkingTraceHTML(msg) {
+    const text = String(msg.text ?? "").trim();
+    const chars = Array.from(text).length;
+    return `<details class="trace trace-think" open>
+      <summary><span class="trace-k">思考过程</span>${msg.sender ? `<span class="trace-sender">${esc(msg.sender)}</span>` : ""}<span class="trace-meta">${chars} 字</span></summary>
+      <div class="trace-body"><pre>${esc(text)}</pre></div>
+    </details>`;
+  }
+
+  function toolTraceHTML(msg) {
+    const t = msg.tool ?? {};
+    const error = !!t.isError || t.status === "error";
+    const statusLabel =
+      t.status === "running" ? "执行中" : error ? "失败" : "已完成";
+    const duration =
+      typeof t.durationMs === "number" && t.durationMs >= 0
+        ? ` · ${(t.durationMs / 1000).toFixed(1)}s`
+        : "";
+    const args = String(t.args ?? "").trim();
+    const result = String(t.result ?? "").trim();
+    return `<details class="trace trace-tool${error ? " is-err" : ""}">
+      <summary>
+        <span class="trace-k">工具</span>
+        ${msg.sender ? `<span class="trace-sender">${esc(msg.sender)}</span>` : ""}
+        <span class="tool-name">${esc(t.name || "tool")}</span>
+        <span class="trace-meta">${statusLabel}${duration}</span>
+      </summary>
+      <div class="trace-body">
+        ${args ? `<div class="trace-label">参数</div><pre>${esc(args)}</pre>` : ""}
+        ${result ? `<div class="trace-label">结果</div><pre>${esc(result)}</pre>` : ""}
+      </div>
+    </details>`;
   }
 
   function taskCardHTML(task) {
@@ -2431,12 +2612,14 @@
   }
 
   function openSheet(html) {
+    stopTraceSheetTimer();
     el.sheet.innerHTML = `<div class="sheet-grip"></div>` + html;
     el.sheetLayer.hidden = false;
     requestAnimationFrame(() => el.sheetLayer.classList.add("is-open"));
   }
 
   function closeSheet() {
+    stopTraceSheetTimer();
     el.sheetLayer.classList.remove("is-open");
     setTimeout(() => {
       el.sheetLayer.hidden = true;
@@ -2815,6 +2998,8 @@
         void openSessionsSheet();
       } else if (act === "deliverables") {
         openDeliverablesSheet();
+      } else if (act === "trace") {
+        openTraceSheet();
       } else if (act === "notify") {
         void toggleSystemNotify();
       } else if (act === "close-notify") {
@@ -3202,22 +3387,42 @@
   async function createSession() {
     closeSheet();
     showToast("正在新建会话…");
+    let created;
     try {
-      const created = await liveFetch("/__im/sessions/new", {
+      created = await liveFetch("/__im/sessions/new", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({})
       });
-      state.agentSessionId = created.id;
-      try {
-        localStorage.setItem("kpao-agent-session", created.id);
-      } catch {}
-      await liveLoadState();
-      location.hash = "#/chat/" + encodeURIComponent(created.id);
-      showToast("已新建会话");
     } catch (error) {
       showToast("新建失败：" + error.message);
+      return;
     }
+    if (!created || !created.id) {
+      showToast("新建失败：DSH 没有返回会话 ID");
+      return;
+    }
+    state.agentSessionId = created.id;
+    try {
+      localStorage.setItem("kpao-agent-session", created.id);
+    } catch {}
+    // 会话已经创建成功；状态刷新失败不能反过来报“新建失败”
+    try {
+      await liveLoadState();
+    } catch {}
+    if (!convById(created.id)) {
+      state.convs.unshift({
+        id: created.id,
+        kind: "bot",
+        name: created.title || "新会话",
+        last: "新会话",
+        time: nowHM(),
+        unread: 0
+      });
+      renderChats();
+    }
+    location.hash = "#/chat/" + encodeURIComponent(created.id);
+    showToast("已新建会话");
   }
 
   async function switchAgentSession(id, title) {

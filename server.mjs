@@ -38,7 +38,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261113b";
+const PROTO_VERSION = "20261117h";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -138,7 +138,7 @@ function loopbackListeningPorts() {
 function probePort(port) {
   return new Promise((resolve) => {
     const authority = `${UPSTREAM_HOST}:${port}`;
-    const cookie = mintCookieFor(authority) ?? readBridgeCookie(port);
+    const cookie = readBridgeCookie(port) ?? mintCookieFor(authority);
     if (cookie === null) {
       resolve(null);
       return;
@@ -852,12 +852,39 @@ function dshSessionMessages(sessionId) {
   const data = readSessionData(sessionId);
   if (data === null) return [];
   const items = [];
+  const tools = new Map();
+  const prettyArgs = (value) => {
+    let out = "";
+    try {
+      if (typeof value === "string" && value.trim() !== "") {
+        try { out = JSON.stringify(JSON.parse(value), null, 2); }
+        catch { out = value; }
+      } else if (value !== undefined && value !== null && typeof value === "object") {
+        out = JSON.stringify(value, null, 2);
+      }
+    } catch { out = String(value ?? ""); }
+    return out.slice(0, 4000);
+  };
+  const resultText = (event) => {
+    const value = event.data ?? {};
+    const content = value.message?.content ?? value.content ?? [];
+    if (Array.isArray(content)) {
+      const text = content
+        .filter((block) => block && block.type === "text" && typeof block.text === "string")
+        .map((block) => block.text)
+        .join("\n")
+        .trim();
+      if (text !== "") return text.slice(0, 5000);
+    }
+    if (typeof value.text === "string") return value.text.slice(0, 5000);
+    return "";
+  };
   for (const event of data.events) {
     if (event.type === "user/message") {
-      const data = event.data ?? {};
-      const source = data.source ?? {};
+      const value = event.data ?? {};
+      const source = value.source ?? {};
       if (source.kind === "time-context") continue;
-      const content = Array.isArray(data.content) ? data.content : [];
+      const content = Array.isArray(value.content) ? value.content : [];
       const body = content
         .filter((block) => block && block.type === "text" && typeof block.text === "string")
         .map((block) => block.text)
@@ -873,13 +900,87 @@ function dshSessionMessages(sessionId) {
         .map((block) => block.text)
         .join("\n")
         .trim();
-      if (body === "") continue;
-      items.push({ id: "s" + event.seq, kind: "bot", sender: "DSH Agent", text: body, time: event.time ?? null, seq: event.seq });
+      const thinking = content
+        .filter((block) => block && (block.type === "reasoning" || block.type === "thinking") && typeof block.text === "string")
+        .map((block) => block.text)
+        .join("\n\n")
+        .trim();
+      if (thinking !== "") {
+        items.push({
+          id: "s" + event.seq + "-think",
+          kind: "thinking",
+          text: thinking.slice(0, 5000),
+          time: event.time ?? null,
+          seq: event.seq,
+          turn: event.data?.turn ?? null,
+          step: event.data?.step ?? null,
+        });
+      }
+      if (body !== "") {
+        items.push({ id: "s" + event.seq, kind: "bot", sender: "DSH Agent", text: body, time: event.time ?? null, seq: event.seq });
+      }
+    } else if (event.type === "tool/call") {
+      const value = event.data ?? {};
+      const callId = String(value.callId ?? "");
+      const item = {
+        id: "s" + event.seq + "-tool",
+        kind: "tool",
+        name: String(value.name ?? "tool"),
+        callId,
+        args: prettyArgs(value.arguments ?? value.args),
+        result: "",
+        status: "running",
+        isError: false,
+        time: event.time ?? null,
+        seq: event.seq,
+        turn: value.turn ?? null,
+        step: value.step ?? null,
+      };
+      items.push(item);
+      if (callId !== "") tools.set(callId, item);
+    } else if (event.type === "tool/result") {
+      const value = event.data ?? {};
+      const callId = String(value.callId ?? value.message?.toolCallId ?? "");
+      const result = resultText(event);
+      const isError = Boolean(value.isError ?? value.message?.isError);
+      const item = tools.get(callId);
+      if (item !== undefined) {
+        item.result = result;
+        item.isError = isError;
+        item.status = isError ? "error" : "done";
+        item.durationMs = event.time != null && item.time != null ? Math.max(0, event.time - item.time) : null;
+      } else if (result !== "") {
+        items.push({
+          id: "s" + event.seq + "-tool",
+          kind: "tool",
+          name: "tool",
+          callId,
+          args: "",
+          result,
+          status: isError ? "error" : "done",
+          isError,
+          time: event.time ?? null,
+          seq: event.seq,
+        });
+      }
     } else if (event.type === "deliverables/presented") {
       items.push(...deliverableItems(event));
     }
   }
   return items;
+}
+
+function latestTurnTrace(items) {
+  const turns = items.map((item) => Number(item.turn) || 0).filter((turn) => turn > 0);
+  if (turns.length === 0) return items.slice(-24);
+  const max = Math.max(...turns);
+  return items.filter((item) => (Number(item.turn) || 0) === max);
+}
+
+function traceItemsFromSession(sessionId, sender) {
+  return dshSessionMessages(sessionId)
+    .filter((item) => item.kind === "thinking" || item.kind === "tool")
+    .map((item) => ({ ...item, sender: sender ?? item.sender ?? "DSH Agent" }));
 }
 
 /** 按 seq 分页：返回最后一页 + 是否还有更早的 + 下一页游标。 */
@@ -1483,8 +1584,10 @@ async function serveIm(req, res, url) {
         return;
       }
       const before = Number.isFinite(Number(rawCursor)) && rawCursor !== "" ? Number(rawCursor) : undefined;
-      const limitParam = Number(url.searchParams.get("limit") ?? "");
-      const limit = Number.isFinite(limitParam) ? Math.min(100, Math.max(10, limitParam)) : 40;
+      const limitRaw = url.searchParams.get("limit");
+      const limit = limitRaw === null || limitRaw.trim() === ""
+        ? 40
+        : Math.min(100, Math.max(10, Number(limitRaw) || 40));
       const fileState = readBotState();
       const rooms = listOf(fileState?.rooms);
       const room = rooms.find((entry) => entry.id === id);
@@ -1646,6 +1749,37 @@ async function serveIm(req, res, url) {
       const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       fs.writeFileSync(path.join(dir, name), buffer);
       jsonResponse(res, 200, { ok: true, path: `uploads/${name}`, name });
+      return;
+    }
+
+    if (pathname === "/__im/trace" && req.method === "GET") {
+      const id = String(url.searchParams.get("id") ?? "");
+      if (id === "") {
+        jsonResponse(res, 400, { ok: false, error: { message: "缺少 id" } });
+        return;
+      }
+      const limitRaw = url.searchParams.get("limit");
+      const limit = limitRaw === null || limitRaw.trim() === ""
+        ? 60
+        : Math.min(120, Math.max(10, Number(limitRaw) || 60));
+      const stateResult = await botStateCached(3000);
+      const bots = listOf(stateResult.value?.bots);
+      const bot = bots.find((item) => item.id === id);
+      const room = listOf(stateResult.value?.rooms).find((item) => item.id === id);
+      let items = [];
+      if (room !== undefined) {
+        const members = Array.isArray(room.members) ? room.members : [];
+        for (const memberId of members) {
+          const member = bots.find((item) => item.id === memberId);
+          if (member?.sessionId) items.push(...latestTurnTrace(traceItemsFromSession(member.sessionId, member.name)));
+        }
+        items.sort((a, b) => (Number(a.time) || 0) - (Number(b.time) || 0));
+      } else if (bot !== undefined) {
+        if (bot.sessionId) items = latestTurnTrace(traceItemsFromSession(bot.sessionId, bot.name));
+      } else {
+        items = latestTurnTrace(traceItemsFromSession(id, "DSH Agent"));
+      }
+      jsonResponse(res, 200, { ok: true, items: items.slice(-limit) });
       return;
     }
 
