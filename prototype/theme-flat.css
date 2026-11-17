@@ -1723,3 +1723,8 @@ body {
   line-height: 1.55;
   color: var(--text-2);
 }
+
+/* 防止移动端连点/双击缩放造成比例错乱 */
+button, a, .tool-tile, .menu-row, .chat-row, .icon-btn, .tab, .quick-chip {
+  touch-action: manipulation;
+}

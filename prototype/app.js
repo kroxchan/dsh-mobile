@@ -2673,6 +2673,12 @@
     stopTraceSheetTimer();
     el.sheet.innerHTML = `<div class="sheet-grip"></div>` + html;
     el.sheetLayer.hidden = false;
+    // 连点保护：新 sheet 刚出现时短暂不吃点击，避免第二下误触新内容。
+    el.sheet.style.pointerEvents = "none";
+    clearTimeout(openSheet._unlock);
+    openSheet._unlock = setTimeout(() => {
+      el.sheet.style.pointerEvents = "";
+    }, 260);
     requestAnimationFrame(() => el.sheetLayer.classList.add("is-open"));
   }
 
@@ -4016,8 +4022,9 @@
       "touchend",
       (event) => {
         const now = Date.now();
-        const interactive = event.target.closest("button, a, input, textarea, [contenteditable]");
-        if (!interactive && now - lastTouchEnd <= 300) event.preventDefault();
+        // 按钮也要拦双击放大；只放过输入框/可编辑区域。
+        const editable = event.target.closest("input, textarea, [contenteditable]");
+        if (!editable && now - lastTouchEnd <= 300) event.preventDefault();
         lastTouchEnd = now;
       },
       { passive: false }
