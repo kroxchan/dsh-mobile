@@ -51,6 +51,7 @@
     "README.md",
     "INSTALL.md",
     "COMMUNITY.md",
-    "LICENSE"
+    "LICENSE",
+    "prototype/sw.js"
   ]
 }

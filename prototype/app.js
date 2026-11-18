@@ -433,7 +433,16 @@
   let notifyHideTimer = null;
 
   function notificationSupported() {
-    return typeof window.Notification !== "undefined";
+    return (
+      typeof window.Notification !== "undefined" &&
+      "serviceWorker" in navigator &&
+      window.isSecureContext === true
+    );
+  }
+
+  function registerNotificationWorker() {
+    if (!("serviceWorker" in navigator) || !isLivePage()) return;
+    navigator.serviceWorker.register("/__proto/sw.js", { scope: "/__proto/" }).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -509,19 +518,41 @@
       banner.hidden = true;
     }, 9000);
     if (
-      state.notifySystem &&
-      notificationSupported() &&
-      Notification.permission === "granted"
-    ) {
+      !state.notifySystem ||
+      !notificationSupported() ||
+      Notification.permission !== "granted"
+    ) return;
+
+    const options = {
+      body,
+      tag: convId || title,
+      data: { convId: convId || "" },
+      renotify: true,
+    };
+    // iOS PWA / Android Chrome 必须走 ServiceWorkerRegistration.showNotification；
+    // new Notification() 在 iOS 主屏幕 App 里通常直接失败。
+    void (async () => {
       try {
-        const notification = new Notification(title, { body, tag: convId || title });
-        notification.onclick = () => {
-          window.focus();
-          if (convId) location.hash = "#/chat/" + convId;
-          notification.close();
-        };
+        const registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
+        if (registration && typeof registration.showNotification === "function") {
+          await registration.showNotification(title, options);
+          return;
+        }
       } catch {}
-    }
+      try {
+        if (typeof Notification !== "undefined") {
+          const notification = new Notification(title, options);
+          notification.onclick = () => {
+            window.focus();
+            if (convId) location.hash = "#/chat/" + convId;
+            notification.close();
+          };
+        }
+      } catch {}
+    })();
   }
 
   function collectRunningIds() {
@@ -4093,6 +4124,7 @@
         Notification.permission === "granted";
     } catch {}
     updateNotifyUI();
+    registerNotificationWorker();
 
     renderChats();
     renderContacts();
