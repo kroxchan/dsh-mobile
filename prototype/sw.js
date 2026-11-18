@@ -1,3 +1,6 @@
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
 /* DSH Mobile — 通知点击处理 */
 self.addEventListener("notificationclick", (event) => {
   const convId = event.notification?.data?.convId || "";

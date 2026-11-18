@@ -39,7 +39,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261117w";
+const PROTO_VERSION = "20261118x";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1497,6 +1497,7 @@ async function sendPushNotification(payload) {
     try {
       await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 3600 });
       kept.push(subscription);
+      log(`push sent ${payload.title || ""} ${payload.convId || ""}`);
     } catch (error) {
       const status = Number(error?.statusCode ?? 0);
       if (status !== 404 && status !== 410) kept.push(subscription);
@@ -1538,13 +1539,15 @@ function collectPushRunning(value) {
 
 async function checkPushCompletions() {
   if (readPushSubscriptions().length === 0) return;
-  const result = await botStateCached(3000);
+  await refreshBotStateNow();
+    const result = await botStateCached(1000);
   if (!result || result.ok !== true) return;
   const { running, names } = collectPushRunning(result.value ?? {});
   if (pushRunning !== null) {
     for (const id of pushRunning) {
       if (running.has(id)) continue;
       const name = names.get(id) || "会话";
+      log(`push completion ${name} ${id}`);
       await sendPushNotification({ title: "任务完成", body: `${name} · 已完成`, convId: id, tag: id });
     }
   }

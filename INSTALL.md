@@ -37,7 +37,17 @@ cd dsh-mobile
 
 ---
 
-## 3. 生成访问口令
+## 3. 安装依赖
+
+`ash
+npm install
+`
+
+Web Push 需要 web-push 依赖，第一次运行前必须安装。
+
+---
+
+## 4. 生成访问口令
 
 ```bash
 node setup.mjs
@@ -59,7 +69,7 @@ node setup.mjs "你的口令"
 
 ---
 
-## 4. 启动网关
+## 5. 启动网关
 
 ```bash
 node server.mjs
@@ -81,7 +91,7 @@ http://127.0.0.1:19000
 
 ---
 
-## 5. 手机访问（局域网）
+## 6. 手机访问（局域网）
 
 1. 查电脑局域网 IP：
 
@@ -127,7 +137,7 @@ New-NetFirewallRule -DisplayName "DSH Mobile 19000" -Direction Inbound -Protocol
 
 ---
 
-## 6. 公网访问 / HTTPS（可选）
+## 7. 公网访问 / HTTPS（可选）
 
 手机主屏幕 App、系统通知、部分浏览器能力需要 HTTPS。推荐 Cloudflare Tunnel。
 
@@ -158,7 +168,7 @@ http://127.0.0.1:19000
 
 ---
 
-## 7. 开机自启
+## 8. 开机自启
 
 ### Windows
 
@@ -200,7 +210,7 @@ systemctl --user enable --now dsh-mobile
 
 ---
 
-## 8. 更新
+## 9. 更新
 
 1. 停掉网关；
 2. 拉取新版本或覆盖文件；
@@ -215,7 +225,7 @@ node server.mjs
 
 ---
 
-## 9. 卸载
+## 10. 卸载
 
 1. 停掉网关 / 删除自启任务；
 2. 删除 `dsh-mobile` 目录；
@@ -223,7 +233,7 @@ node server.mjs
 
 ---
 
-## 10. 常见问题
+## 11. 常见问题
 
 ### 502 / 提示 DSH 异常
 
@@ -262,7 +272,7 @@ node server.mjs
 
 ---
 
-## 11. 安全边界
+## 12. 安全边界
 
 - 手机端登录后拥有与本机 DSH 浏览器相同的权限；
 - 不要开放给不受信任的人；

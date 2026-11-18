@@ -37,7 +37,13 @@ DSH Web GUI  127.0.0.1:<随机端口>
 ## 快速开始
 
 1. 安装 Node.js 22+，并确保本机 DSH 正在运行；
-2. 在本目录执行：
+2. 安装依赖：
+
+   ```bash
+   npm install
+   ```
+
+3. 在本目录执行：
 
    ```bash
    node setup.mjs
@@ -45,7 +51,7 @@ DSH Web GUI  127.0.0.1:<随机端口>
 
    会生成 `config.json` 并打印一次性访问口令（口令只以 scrypt 派生值保存）。
 
-3. 启动网关：
+4. 启动网关：
 
    ```bash
    node server.mjs

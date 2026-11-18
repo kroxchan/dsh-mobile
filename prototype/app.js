@@ -491,7 +491,7 @@
 
   function registerNotificationWorker() {
     if (!("serviceWorker" in navigator) || !isLivePage()) return;
-    navigator.serviceWorker.register("/__proto/sw.js", { scope: "/__proto/" }).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
