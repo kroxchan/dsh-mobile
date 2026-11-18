@@ -53,5 +53,8 @@
     "COMMUNITY.md",
     "LICENSE",
     "prototype/sw.js"
-  ]
+  ],
+  "dependencies": {
+    "web-push": "^4.0.0"
+  }
 }

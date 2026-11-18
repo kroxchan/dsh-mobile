@@ -19,6 +19,7 @@ import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import * as webpush from "web-push";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(DIR, "config.json");
@@ -38,7 +39,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261117v";
+const PROTO_VERSION = "20261117w";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1443,6 +1444,119 @@ function roomMessagesFromSession(sessionId) {
   return items;
 }
 
+/* ------------------------- Web Push ------------------------- */
+const PUSH_DATA_DIR = path.join(DIR, "data");
+const PUSH_VAPID_FILE = path.join(PUSH_DATA_DIR, "push-vapid.json");
+const PUSH_SUBS_FILE = path.join(PUSH_DATA_DIR, "push-subscriptions.json");
+let pushVapid = null;
+let pushRunning = null;
+let pushTimer = null;
+
+function ensurePushVapid() {
+  if (pushVapid !== null) return pushVapid;
+  try {
+    fs.mkdirSync(PUSH_DATA_DIR, { recursive: true });
+    if (!fs.existsSync(PUSH_VAPID_FILE)) {
+      const keys = webpush.generateVAPIDKeys();
+      fs.writeFileSync(PUSH_VAPID_FILE, JSON.stringify(keys, null, 2), { mode: 0o600 });
+    }
+    const keys = JSON.parse(fs.readFileSync(PUSH_VAPID_FILE, "utf8"));
+    if (keys.publicKey && keys.privateKey) {
+      pushVapid = keys;
+      webpush.setVapidDetails("https://github.com/kroxchan/dsh-mobile", keys.publicKey, keys.privateKey);
+      return pushVapid;
+    }
+  } catch (error) {
+    log(`push vapid init failed: ${String(error?.message ?? error)}`);
+  }
+  return null;
+}
+
+function readPushSubscriptions() {
+  try {
+    const list = JSON.parse(fs.readFileSync(PUSH_SUBS_FILE, "utf8"));
+    return Array.isArray(list) ? list : [];
+  } catch {}
+  return [];
+}
+
+function savePushSubscriptions(list) {
+  try {
+    fs.mkdirSync(PUSH_DATA_DIR, { recursive: true });
+    fs.writeFileSync(PUSH_SUBS_FILE, JSON.stringify(list.slice(-20), null, 2), { mode: 0o600 });
+  } catch {}
+}
+
+async function sendPushNotification(payload) {
+  const vapid = ensurePushVapid();
+  if (vapid === null) return;
+  const subs = readPushSubscriptions();
+  if (subs.length === 0) return;
+  const kept = [];
+  for (const subscription of subs) {
+    try {
+      await webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 3600 });
+      kept.push(subscription);
+    } catch (error) {
+      const status = Number(error?.statusCode ?? 0);
+      if (status !== 404 && status !== 410) kept.push(subscription);
+    }
+  }
+  if (kept.length !== subs.length) savePushSubscriptions(kept);
+}
+
+function collectPushRunning(value) {
+  const running = new Set();
+  const names = new Map();
+  const bots = listOf(value?.bots);
+  const rooms = listOf(value?.rooms);
+  const agents = listOf(value?.agents);
+  for (const bot of bots) {
+    names.set(bot.id, bot.name || "Bot");
+    if (bot.sessionId && sessionLiveStatus(bot.sessionId)) running.add(bot.id);
+  }
+  for (const room of rooms) {
+    names.set(room.id, room.name || "群聊");
+    if (room.sessionId && sessionLiveStatus(room.sessionId)) running.add(room.id);
+  }
+  for (const agent of agents) {
+    const name = agent.name || "DSH Agent";
+    for (const sessionId of Array.isArray(agent.sessions) ? agent.sessions : []) {
+      names.set(sessionId, name);
+      if (sessionLiveStatus(sessionId)) running.add(sessionId);
+    }
+  }
+  for (const group of ["bots", "rooms"]) {
+    for (const id of Object.keys(value?.work?.[group] ?? {})) {
+      running.add(id);
+      if (!names.has(id)) names.set(id, group === "bots" ? "Bot" : "群聊");
+    }
+  }
+  for (const id of Object.keys(value?.work?.turns ?? {})) running.add(id);
+  return { running, names };
+}
+
+async function checkPushCompletions() {
+  if (readPushSubscriptions().length === 0) return;
+  const result = await botStateCached(3000);
+  if (!result || result.ok !== true) return;
+  const { running, names } = collectPushRunning(result.value ?? {});
+  if (pushRunning !== null) {
+    for (const id of pushRunning) {
+      if (running.has(id)) continue;
+      const name = names.get(id) || "会话";
+      await sendPushNotification({ title: "任务完成", body: `${name} · 已完成`, convId: id, tag: id });
+    }
+  }
+  pushRunning = running;
+}
+
+function startPushWatcher() {
+  if (pushTimer !== null) return;
+  pushTimer = setInterval(() => { void checkPushCompletions(); }, 3000);
+  if (typeof pushTimer.unref === "function") pushTimer.unref();
+}
+
 async function serveIm(req, res, url) {
   const pathname = url.pathname;
   log(`im ${req.method} ${pathname} ua=${String(req.headers["user-agent"] ?? "").slice(0, 70)}`);
@@ -1483,6 +1597,44 @@ async function serveIm(req, res, url) {
         models: listOf(value.models),
         defaultModel: value.defaultModel ?? null,
       });
+      return;
+    }
+
+    if (pathname === "/__im/push/public-key" && req.method === "GET") {
+      const vapid = ensurePushVapid();
+      if (vapid === null) {
+        jsonResponse(res, 500, { ok: false, error: { message: "VAPID 初始化失败" } });
+        return;
+      }
+      jsonResponse(res, 200, { ok: true, publicKey: vapid.publicKey });
+      return;
+    }
+
+    if (pathname === "/__im/push/subscribe" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const subscription = body.subscription;
+      if (!subscription || typeof subscription.endpoint !== "string" || !subscription.endpoint.startsWith("https://")) {
+        jsonResponse(res, 400, { ok: false, error: { message: "订阅格式不正确" } });
+        return;
+      }
+      if (ensurePushVapid() === null) {
+        jsonResponse(res, 500, { ok: false, error: { message: "VAPID 初始化失败" } });
+        return;
+      }
+      const list = readPushSubscriptions().filter((item) => item.endpoint !== subscription.endpoint);
+      list.push(subscription);
+      savePushSubscriptions(list);
+      jsonResponse(res, 200, { ok: true });
+      return;
+    }
+
+    if (pathname === "/__im/push/unsubscribe" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const endpoint = String(body.endpoint ?? "");
+      if (endpoint !== "") {
+        savePushSubscriptions(readPushSubscriptions().filter((item) => item.endpoint !== endpoint));
+      }
+      jsonResponse(res, 200, { ok: true });
       return;
     }
 
@@ -2548,4 +2700,5 @@ server.on("clientError", (error, socket) => {
 server.listen(LISTEN_PORT, "::", () => {
   log(`网关已启动 http://127.0.0.1:${LISTEN_PORT}，上游自动发现（提示端口 ${HINT_PORT}）`);
   connectRemoteEvents();
+  startPushWatcher();
 });

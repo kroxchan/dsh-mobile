@@ -27,3 +27,7 @@ DESIGN.md
 FEATURE-MAP.md
 PUSH-ISSUE.md
 docs/
+
+# Web Push secrets / subscriptions
+data/push-vapid.json
+data/push-subscriptions.json

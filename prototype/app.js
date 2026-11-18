@@ -440,6 +440,55 @@
     );
   }
 
+  function urlBase64ToUint8Array(base64) {
+    const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+    const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+    return bytes;
+  }
+
+  async function ensurePushSubscription() {
+    if (!notificationSupported() || !("PushManager" in window)) return false;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if (!registration || !registration.pushManager) return false;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        const keyData = await liveFetch("/__im/push/public-key");
+        if (!keyData?.publicKey) return false;
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+        });
+      }
+      await liveFetch("/__im/push/subscribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subscription }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function removePushSubscription() {
+    try {
+      if (!("serviceWorker" in navigator)) return;
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration?.pushManager?.getSubscription();
+      if (subscription) {
+        await liveFetch("/__im/push/unsubscribe", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+        await subscription.unsubscribe();
+      }
+    } catch {}
+  }
+
   function registerNotificationWorker() {
     if (!("serviceWorker" in navigator) || !isLivePage()) return;
     navigator.serviceWorker.register("/__proto/sw.js", { scope: "/__proto/" }).catch(() => {});
@@ -473,6 +522,7 @@
         localStorage.setItem("kpao-notify-system", "0");
       } catch {}
       updateNotifyUI();
+      void removePushSubscription();
       showToast("系统通知已关闭，应用内提醒仍然有效");
       return;
     }
@@ -482,7 +532,9 @@
         localStorage.setItem("kpao-notify-system", "1");
       } catch {}
       updateNotifyUI();
-      showToast("系统通知已开启");
+      void ensurePushSubscription().then((ok) => {
+        showToast(ok ? "系统通知已开启（含后台 Web Push）" : "系统通知已开启；后台推送未订阅，仅前台提醒");
+      });
       return;
     }
     const permission = await Notification.requestPermission();
@@ -492,7 +544,9 @@
         localStorage.setItem("kpao-notify-system", "1");
       } catch {}
       updateNotifyUI();
-      showToast("系统通知已开启");
+      void ensurePushSubscription().then((ok) => {
+        showToast(ok ? "系统通知已开启（含后台 Web Push）" : "系统通知已开启；后台推送未订阅，仅前台提醒");
+      });
     } else {
       showToast("没有获得通知权限，应用内提醒仍然有效");
     }
@@ -4125,6 +4179,7 @@
     } catch {}
     updateNotifyUI();
     registerNotificationWorker();
+    if (state.notifySystem) setTimeout(() => { void ensurePushSubscription(); }, 800);
 
     renderChats();
     renderContacts();

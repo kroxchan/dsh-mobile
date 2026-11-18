@@ -17,3 +17,17 @@ self.addEventListener("notificationclick", (event) => {
     if (self.clients.openWindow) await self.clients.openWindow(target);
   })());
 });
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch {}
+  const title = payload.title || "DSH Mobile";
+  const body = payload.body || "有新的任务进展";
+  const convId = payload.convId || "";
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag: payload.tag || convId || title,
+    data: { convId },
+    renotify: true,
+  }));
+});
