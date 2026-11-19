@@ -4017,126 +4017,18 @@
   }
 
   function openSettings() {
-    const groups = [
-      {
-        title: "账号与模型",
-        rows: [
-          ["i-me", "账号资料", "账号资料（原型占位）"],
-          ["i-spark", "模型选择", "模型选择（原型占位）"],
-          ["i-usage", "用量与余额", "用量与余额（原型占位）"]
-        ]
-      },
-      {
-        title: "界面",
-        rows: [
-          ["i-moon", "外观", "外观（在「我的」里可直接切换）"],
-          ["i-globe", "语言", "语言（原型占位）"],
-          ["i-key", "快捷键", "快捷键（原型占位）"],
-          ["i-spark", "入口定制", "入口定制（原型占位）"]
-        ]
-      },
-      {
-        title: "能力",
-        rows: [
-          ["i-search", "Web 搜索", "Web 搜索（原型占位）"],
-          ["i-bot", "子代理", "子代理（原型占位）"],
-          ["i-flow", "Agent Loop", "Agent Loop（原型占位）"],
-          ["i-terminal", "Shell 权限", "Shell 权限（原型占位）"],
-          ["i-shield", "技能", "技能（原型占位）"],
-          ["i-folder", "插件市场", "插件市场（原型占位）"]
-        ]
-      },
-      {
-        title: "会话与数据",
-        rows: [
-          ["i-doc", "会话日志", "会话日志（原型占位）"],
-          ["i-export", "导出会话", "导出会话（原型占位）"],
-          ["i-globe", "远程访问", "远程访问（原型占位）"],
-          ["i-check", "审批记录", "审批记录（原型占位）"]
-        ]
-      },
-      {
-        title: "关于",
-        rows: [["i-info", "版本与更新", "版本与更新（原型占位）"]]
-      }
+    const rows = [
+      ["i-usage", "用量与充值", "billing"],
+      ["i-bell", "任务提醒", "notify"],
+      ["i-moon", "外观", "theme"],
+      ["i-chat", "会话管理", "sessions"],
+      ["i-clock", "重新加载", "reload"],
+      ["i-flow", "功能说明", "features"],
+      ["i-info", "设计说明", "design-note"]
     ];
-    const html = groups
-      .map(
-        (group) => `<div class="group"><div class="group-title">${esc(group.title)}</div>
-          <div class="group-card">${group.rows
-            .map(
-              ([icon, label, toastText]) => `<button class="menu-row" data-act="toast" data-toast="${esc(
-                toastText
-              )}">
-              <span class="menu-ic"><svg class="ic"><use href="#${icon}"/></svg></span>
-              <span class="menu-label">${esc(label)}</span>
-              <svg class="ic chev"><use href="#i-chev"/></svg>
-            </button>`
-            )
-            .join("")}</div></div>`
-      )
-      .join("");
-    openSheet(`<h3>全部设置</h3>
-      <p class="sheet-sub">桌面端能设置的项，手机端都保留入口；这里只演示位置。</p>
-      ${html}
-      <p class="hint">正式版接 DSH 设置接口，不改变桌面端任何行为。</p>`);
-  }
-
-  function updateBalanceShort(account) {
-    const node = $("#balanceShort");
-    if (!node) return;
-    const balance =
-      (account?.balance ?? []).find((item) => item.currency === "CNY") ?? (account?.balance ?? [])[0];
-    if (balance) node.textContent = "¥" + Number(balance.balance).toFixed(2);
-  }
-
-  async function openBilling() {
-    openSheet(`<h3>用量与充值</h3><p class="sheet-sub">正在读取账号…</p>`);
-    try {
-      const [account, usage] = await Promise.all([
-        liveFetch("/__im/account"),
-        liveFetch("/__im/usage")
-      ]);
-      updateBalanceShort(account);
-      const balance =
-        (account.balance ?? []).find((item) => item.currency === "CNY") ?? (account.balance ?? [])[0];
-      const money = balance ? Number(balance.balance).toFixed(2) : "—";
-      const rows = usage.usage?.rows ?? [];
-      const nowHour = String(usage.usage?.now ?? "");
-      const today = nowHour.slice(0, 10);
-      let todayTokens = 0;
-      let todayCalls = 0;
-      for (const row of rows) {
-        if (String(row[0]).slice(0, 10) !== today) continue;
-        todayTokens += Number(row[4] ?? 0) + Number(row[7] ?? 0);
-        todayCalls += Number(row[8] ?? 0);
-      }
-      const profile = account.profile ?? {};
-      openSheet(`<h3>用量与充值</h3>
-        <p class="sheet-sub">余额来自本机 DSH 账号，用量按小时账本汇总。</p>
-        <div class="billing-card">
-          <div class="billing-label">当前余额</div>
-          <div class="billing-balance">¥${esc(money)}</div>
-          ${
-            profile.name
-              ? `<div class="billing-sub">${esc(profile.name)}${
-                  profile.contact ? " · " + esc(profile.contact) : ""
-                }</div>`
-              : ""
-          }
-        </div>
-        <div class="billing-grid">
-          <div class="billing-stat"><b>${todayTokens.toLocaleString("zh-CN")}</b><span>今日 tokens</span></div>
-          <div class="billing-stat"><b>${todayCalls.toLocaleString("zh-CN")}</b><span>今日调用</span></div>
-        </div>
-        <p class="hint">统计包含全部 Bot 与 DSH Agent；充值在 DeepSeek 平台完成，回来刷新即可看到余额。</p>
-        <div class="sheet-footer">
-          <a class="btn primary" href="https://platform.deepseek.com/top_up" target="_blank" rel="noreferrer noopener">去 DeepSeek 平台充值</a>
-        </div>`);
-    } catch (error) {
-      openSheet(`<h3>用量与充值</h3><p class="sheet-sub">读取失败：${esc(error.message)}</p>
-        <div class="sheet-footer"><button class="btn" data-act="sheet-close">关闭</button></div>`);
-    }
+    openSheet('<h3>设置</h3><p class="sheet-sub">只列出已经能工作的功能。</p><div class="group-card">' +
+      rows.map(([icon, label, act]) => '<button class="menu-row" data-act="' + act + '"><span class="menu-ic ic-muted"><svg class="ic"><use href="#' + icon + '"/></svg></span><span class="menu-label">' + label + '</span><svg class="ic chev"><use href="#i-chev"/></svg></button>').join('') +
+      '</div><div style="height:10px"></div><button class="btn" data-act="sheet-close" style="width:100%;padding:12px">关闭</button>');
   }
 
   function openFeatures() {
