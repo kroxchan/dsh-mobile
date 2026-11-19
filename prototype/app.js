@@ -400,6 +400,7 @@
     renderApprovals(snapshot.work?.approvals ?? []);
     renderChats();
     renderContacts();
+    refreshMyStats();
     return snapshot;
   }
 
@@ -4031,6 +4032,64 @@
       '</div><div style="height:10px"></div><button class="btn" data-act="sheet-close" style="width:100%;padding:12px">关闭</button>');
   }
 
+  function updateBalanceShort(account) {
+    const node = $("#balanceShort");
+    if (!node) return;
+    const balance =
+      (account?.balance ?? []).find((item) => item.currency === "CNY") ?? (account?.balance ?? [])[0];
+    if (balance) node.textContent = "¥" + Number(balance.balance).toFixed(2);
+  }
+
+  async function openBilling() {
+    openSheet(`<h3>用量与充值</h3><p class="sheet-sub">正在读取账号…</p>`);
+    try {
+      const [account, usage] = await Promise.all([
+        liveFetch("/__im/account"),
+        liveFetch("/__im/usage")
+      ]);
+      updateBalanceShort(account);
+      const balance =
+        (account.balance ?? []).find((item) => item.currency === "CNY") ?? (account.balance ?? [])[0];
+      const money = balance ? Number(balance.balance).toFixed(2) : "—";
+      const rows = usage.usage?.rows ?? [];
+      const nowHour = String(usage.usage?.now ?? "");
+      const today = nowHour.slice(0, 10);
+      let todayTokens = 0;
+      let todayCalls = 0;
+      for (const row of rows) {
+        if (String(row[0]).slice(0, 10) !== today) continue;
+        todayTokens += Number(row[4] ?? 0) + Number(row[7] ?? 0);
+        todayCalls += Number(row[8] ?? 0);
+      }
+      const profile = account.profile ?? {};
+      openSheet(`<h3>用量与充值</h3>
+        <p class="sheet-sub">余额来自本机 DSH 账号，用量按小时账本汇总。</p>
+        <div class="billing-card">
+          <div class="billing-label">当前余额</div>
+          <div class="billing-balance">¥${esc(money)}</div>
+          ${
+            profile.name
+              ? `<div class="billing-sub">${esc(profile.name)}${
+                  profile.contact ? " · " + esc(profile.contact) : ""
+                }</div>`
+              : ""
+          }
+        </div>
+        <div class="billing-grid">
+          <div class="billing-stat"><b>${todayTokens.toLocaleString("zh-CN")}</b><span>今日 tokens</span></div>
+          <div class="billing-stat"><b>${todayCalls.toLocaleString("zh-CN")}</b><span>今日调用</span></div>
+        </div>
+        <p class="hint">统计包含全部 Bot 与 DSH Agent；充值在 DeepSeek 平台完成，回来刷新即可看到余额。</p>
+        <div class="sheet-footer">
+          <a class="btn primary" href="https://platform.deepseek.com/top_up" target="_blank" rel="noreferrer noopener">去 DeepSeek 平台充值</a>
+        </div>`);
+    } catch (error) {
+      openSheet(`<h3>用量与充值</h3><p class="sheet-sub">读取失败：${esc(error.message)}</p>
+        <div class="sheet-footer"><button class="btn" data-act="sheet-close">关闭</button></div>`);
+    }
+  }
+
+
   function openFeatures() {
     const items = [
       ["会话与导航", "会话列表 / 新建对话 / 历史会话 / 置顶 / 部门群 / 搜索", "消息页、通讯录"],
@@ -4202,6 +4261,7 @@
     } catch {}
     updateNotifyUI();
     registerNotificationWorker();
+    window.__kpaoState = state;
     void refreshMemoryCount();
     void refreshTaskBoardCount();
     refreshMyStats();
