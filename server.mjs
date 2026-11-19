@@ -19,6 +19,7 @@ import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { listMemory, addMemory, removeMemory, memoryStats } from "./memory-store.mjs";
 import * as webpush from "web-push";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -39,7 +40,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261118x";
+const PROTO_VERSION = "20261118z";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1638,6 +1639,37 @@ async function serveIm(req, res, url) {
         savePushSubscriptions(readPushSubscriptions().filter((item) => item.endpoint !== endpoint));
       }
       jsonResponse(res, 200, { ok: true });
+      return;
+    }
+
+    if (pathname === "/__im/memory" && req.method === "GET") {
+      const query = String(url.searchParams.get("q") ?? "");
+      const tag = String(url.searchParams.get("tag") ?? "");
+      const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 30));
+      jsonResponse(res, 200, { ok: true, items: listMemory({ query, tag, limit }), stats: memoryStats() });
+      return;
+    }
+
+    if (pathname === "/__im/memory" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      try {
+        const item = addMemory({
+          title: String(body.title ?? ""),
+          text: String(body.text ?? ""),
+          tags: Array.isArray(body.tags) ? body.tags : String(body.tags ?? "").split(/[,，\\s]+/),
+          source: String(body.source ?? "mobile"),
+          scope: String(body.scope ?? "shared"),
+        });
+        jsonResponse(res, 200, { ok: true, item, stats: memoryStats() });
+      } catch (error) {
+        jsonResponse(res, 400, { ok: false, error: { message: String(error?.message ?? "保存失败") } });
+      }
+      return;
+    }
+
+    if (pathname === "/__im/memory" && req.method === "DELETE") {
+      const id = String(url.searchParams.get("id") ?? "");
+      jsonResponse(res, 200, { ok: removeMemory(id), stats: memoryStats() });
       return;
     }
 

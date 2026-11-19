@@ -2863,6 +2863,13 @@
         if (event.target.closest(".chat-row, .contact-row")) return;
       }
 
+      const memoryDel = event.target.closest("[data-memory-del]");
+      if (memoryDel) {
+        event.preventDefault();
+        void deleteMemory(memoryDel.dataset.memoryDel);
+        return;
+      }
+
       const dirHit = event.target.closest("[data-file-dir]");
       if (dirHit) {
         event.preventDefault();
@@ -3195,6 +3202,12 @@
         void openWorkspaceFiles("");
       } else if (act === "open-jobs") {
         void openJobsSheet();
+      } else if (act === "memory") {
+        void openMemorySheet("");
+      } else if (act === "memory-add") {
+        openMemoryAdd();
+      } else if (act === "memory-save") {
+        void saveMemoryFromForm();
       } else if (act === "settings") {
         openSettings();
       } else if (act === "features") {
@@ -3830,6 +3843,124 @@
     }
   }
 
+  async function refreshMemoryCount() {
+    try {
+      const data = await liveFetch("/__im/memory?limit=1");
+      const node = $("#memoryCount");
+      if (node) node.textContent = String(data.stats?.total ?? 0);
+    } catch {}
+  }
+
+  function refreshMyStats() {
+    const bots = $("#botCount");
+    const tasks = $("#taskCount");
+    const done = $("#doneToday");
+    if (bots) bots.textContent = String(state.bots.length || "—");
+    const list = Object.values(state.tasks || {});
+    if (tasks) tasks.textContent = String(list.filter((task) => !["completed", "cancelled"].includes(String(task.status || ""))).length);
+    const today = new Date().toISOString().slice(0, 10);
+    if (done) done.textContent = String(list.filter((task) => String(task.status) === "completed" && String(task.updated || "").slice(0, 10) === today).length);
+  }
+
+  async function refreshTaskBoardCount() {
+    try {
+      const data = await liveFetch("/__im/tasks");
+      const tasks = data.tasks ?? [];
+      const open = tasks.filter((task) => !["completed", "cancelled"].includes(String(task.status || ""))).length;
+      const node = $("#taskBoardShort");
+      if (node) node.textContent = open > 0 ? open + " 进行中" : "全部完成";
+      refreshMyStats();
+    } catch {}
+  }
+
+  function memoryItemHTML(item) {
+    return `<div class="memory-item" data-memory-id="${esc(item.id)}">
+      <div class="memory-title">${esc(item.title || "未命名记忆")}</div>
+      <div class="memory-text">${esc(item.text || "")}</div>
+      <div class="memory-meta">${esc(item.source || "manual")}${item.tags?.length ? " · " + esc(item.tags.join(" / ")) : ""}</div>
+      <div class="memory-actions"><button class="btn ghost" data-memory-del="${esc(item.id)}">删除</button></div>
+    </div>`;
+  }
+
+  async function loadMemoryList(query) {
+    const box = $("#memoryList");
+    if (!box) return;
+    box.innerHTML = '<p class="sheet-sub">正在读取…</p>';
+    try {
+      const data = await liveFetch("/__im/memory?limit=50&q=" + encodeURIComponent(query || ""));
+      const items = data.items ?? [];
+      box.innerHTML = items.length
+        ? items.map(memoryItemHTML).join("")
+        : '<p class="sheet-sub">没有匹配的记忆。直接新增一条。</p>';
+      const count = $("#memoryCount");
+      if (count && data.stats) count.textContent = String(data.stats.total ?? 0);
+    } catch (error) {
+      box.innerHTML = '<p class="sheet-sub">读取失败：' + esc(error.message) + '</p>';
+    }
+  }
+
+  async function openMemorySheet(query) {
+    openSheet(`<h3>共享知识库</h3>
+      <p class="sheet-sub">DSH Agent、QQ Bot、手机端共用；当前是关键词检索，不是向量库。</p>
+      <div class="input-wrap"><input id="memorySearchInput" type="search" placeholder="搜索记忆 / 偏好 / 决定" value="${esc(query || "")}" autocomplete="off"></div>
+      <div id="memoryList"><p class="sheet-sub">正在读取…</p></div>
+      <div class="sheet-footer"><button class="btn" data-act="memory-add">＋ 新增记忆</button><button class="btn ghost" data-act="sheet-close">关闭</button></div>`);
+    const input = $("#memorySearchInput");
+    if (input) {
+      let timer = null;
+      input.addEventListener("input", () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => void loadMemoryList(input.value), 250);
+      });
+      input.focus();
+    }
+    await loadMemoryList(query || "");
+  }
+
+  function openMemoryAdd() {
+    openSheet(`<h3>新增共享记忆</h3>
+      <p class="sheet-sub">写一条跨会话、跨 Agent 都值得记住的事实或决定。</p>
+      <div class="field"><input id="memoryTitleInput" placeholder="标题（可空）" maxlength="80"></div>
+      <div class="field"><textarea id="memoryTextInput" rows="5" placeholder="内容，例如：Krox 要求所有文档同时给 .md 和飞书链接"></textarea></div>
+      <div class="field"><input id="memoryTagsInput" placeholder="标签，用逗号分隔（可空）"></div>
+      <div class="sheet-footer"><button class="btn" data-act="memory-save">保存</button><button class="btn ghost" data-act="sheet-close">取消</button></div>`);
+    const text = $("#memoryTextInput");
+    if (text) text.focus();
+  }
+
+  async function saveMemoryFromForm() {
+    const text = String($("#memoryTextInput")?.value ?? "").trim();
+    if (text === "") { showToast("先写内容"); return; }
+    try {
+      await liveFetch("/__im/memory", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: String($("#memoryTitleInput")?.value ?? "").trim(),
+          text,
+          tags: String($("#memoryTagsInput")?.value ?? "").split(/[,，\s]+/).filter(Boolean),
+          source: "mobile",
+          scope: "shared",
+        }),
+      });
+      showToast("已写入共享知识库");
+      await openMemorySheet("");
+    } catch (error) {
+      showToast("保存失败：" + error.message);
+    }
+  }
+
+  async function deleteMemory(id) {
+    if (!id) return;
+    try {
+      await liveFetch("/__im/memory?id=" + encodeURIComponent(id), { method: "DELETE" });
+      showToast("已删除");
+      await loadMemoryList($("#memorySearchInput")?.value || "");
+    } catch (error) {
+      showToast("删除失败：" + error.message);
+    }
+  }
+
   function openChatTools() {
     const conv = currentConv();
     if (!conv) return;
@@ -4179,6 +4310,9 @@
     } catch {}
     updateNotifyUI();
     registerNotificationWorker();
+    void refreshMemoryCount();
+    void refreshTaskBoardCount();
+    refreshMyStats();
     if (state.notifySystem) setTimeout(() => { void ensurePushSubscription(); }, 800);
 
     renderChats();

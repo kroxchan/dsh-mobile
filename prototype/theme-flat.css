@@ -1728,3 +1728,22 @@ body {
 button, a, .tool-tile, .menu-row, .chat-row, .icon-btn, .tab, .quick-chip {
   touch-action: manipulation;
 }
+
+/* ¹²ÏíÖªÊ¶¿â */
+.memory-item {
+  padding: 11px 0;
+  border-bottom: 0.5px solid var(--hair);
+}
+.memory-item:last-child { border-bottom: 0; }
+.memory-title { font-size: 14px; font-weight: 500; color: var(--text); }
+.memory-text {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.memory-meta { margin-top: 5px; font-size: 11px; color: var(--text-3); }
+.memory-actions { margin-top: 6px; text-align: right; }
+.memory-actions .btn { padding: 4px 8px; font-size: 11px; }

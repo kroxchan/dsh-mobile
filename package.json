@@ -52,7 +52,9 @@
     "INSTALL.md",
     "COMMUNITY.md",
     "LICENSE",
-    "prototype/sw.js"
+    "prototype/sw.js",
+    "memory-store.mjs",
+    "memory-cli.mjs"
   ],
   "dependencies": {
     "web-push": "^4.0.0"

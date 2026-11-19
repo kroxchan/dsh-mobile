@@ -125,13 +125,13 @@
     }
   }
 </style>
-<link rel="preload" href="app.js?v=20261118x" as="script" fetchpriority="high">
-<link rel="preload" href="data.js?v=20261118x" as="script" fetchpriority="high">
-<link rel="stylesheet" href="styles.css?v=20261118x" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="theme-flat.css?v=20261118x" media="print" onload="this.media='all'">
+<link rel="preload" href="app.js?v=20261118z" as="script" fetchpriority="high">
+<link rel="preload" href="data.js?v=20261118z" as="script" fetchpriority="high">
+<link rel="stylesheet" href="styles.css?v=20261118z" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="theme-flat.css?v=20261118z" media="print" onload="this.media='all'">
 <noscript>
-  <link rel="stylesheet" href="styles.css?v=20261118x">
-  <link rel="stylesheet" href="theme-flat.css?v=20261118x">
+  <link rel="stylesheet" href="styles.css?v=20261118z">
+  <link rel="stylesheet" href="theme-flat.css?v=20261118z">
 </noscript>
 <script>
   (function () {
@@ -361,36 +361,28 @@
         </div>
 
         <div class="stat-card">
-          <div class="stat"><b>12</b><span>Bots</span></div>
+          <div class="stat"><b id="botCount">—</b><span>Bots</span></div>
           <div class="stat-sep"></div>
-          <div class="stat"><b>25</b><span>任务</span></div>
+          <div class="stat"><b id="taskCount">—</b><span>任务</span></div>
           <div class="stat-sep"></div>
-          <div class="stat"><b>6</b><span>今日完成</span></div>
+          <div class="stat"><b id="doneToday">—</b><span>今日完成</span></div>
         </div>
 
         <div class="group">
           <div class="group-title">组织</div>
           <div class="group-card">
-            <button class="menu-row" data-act="toast" data-toast="组织章程 · 原型占位">
-              <span class="menu-ic ic-lead"><svg class="ic"><use href="#i-doc"/></svg></span>
-              <span class="menu-label">组织章程</span><span class="menu-value">v1.1</span>
-              <svg class="ic chev"><use href="#i-chev"/></svg>
-            </button>
-            <button class="menu-row" data-act="toast" data-toast="任务板 · 原型占位">
+            
+            <button class="menu-row" data-act="open-jobs">
               <span class="menu-ic ic-project"><svg class="ic"><use href="#i-task"/></svg></span>
-              <span class="menu-label">任务板</span><span class="menu-value">3 进行中</span>
+              <span class="menu-label">任务板</span><span class="menu-value" id="taskBoardShort">—</span>
               <svg class="ic chev"><use href="#i-chev"/></svg>
             </button>
-            <button class="menu-row" data-act="toast" data-toast="知识库 · 原型占位">
+            <button class="menu-row" data-act="memory">
               <span class="menu-ic ic-research"><svg class="ic"><use href="#i-folder"/></svg></span>
-              <span class="menu-label">知识库</span><span class="menu-value">7 篇</span>
+              <span class="menu-label">共享知识库</span><span class="menu-value" id="memoryCount">—</span>
               <svg class="ic chev"><use href="#i-chev"/></svg>
             </button>
-            <button class="menu-row" data-act="toast" data-toast="决策记录 · 原型占位">
-              <span class="menu-ic ic-content"><svg class="ic"><use href="#i-shield"/></svg></span>
-              <span class="menu-label">决策记录</span><span class="menu-value">A-01 ~ A-09</span>
-              <svg class="ic chev"><use href="#i-chev"/></svg>
-            </button>
+            
           </div>
         </div>
 
@@ -434,11 +426,6 @@
               <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-lock"/></svg></span>
               <span class="menu-label">锁定比例<span class="menu-sub">禁止双指缩放 / 双击放大</span></span>
               <button class="switch is-on" id="zoomSwitch" role="switch" aria-checked="true" aria-label="锁定缩放"><i></i></button>
-            </div>
-            <div class="menu-row as-row">
-              <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-bell"/></svg></span>
-              <span class="menu-label">Bot 完成时通知<span class="menu-sub">原型占位</span></span>
-              <button class="switch" role="switch" aria-checked="false" aria-label="通知" data-act="toast" data-toast="通知需要系统级权限，正式版再接"><i></i></button>
             </div>
             <button class="menu-row" data-act="design-note">
               <span class="menu-ic ic-muted"><svg class="ic"><use href="#i-info"/></svg></span>
@@ -582,7 +569,7 @@
   <p class="stage-meta">移动端交互原型 · 390 × 844 · 比例已锁定</p>
 </div>
 
-<script src="data.js?v=20261118x"></script>
-<script src="app.js?v=20261118x"></script>
+<script src="data.js?v=20261118z"></script>
+<script src="app.js?v=20261118z"></script>
 </body>
 </html>
