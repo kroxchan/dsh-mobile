@@ -3903,8 +3903,8 @@
     openSheet(`<h3>共享知识库</h3>
       <p class="sheet-sub">DSH Agent、QQ Bot、手机端共用；当前是关键词检索，不是向量库。</p>
       <div class="input-wrap"><input id="memorySearchInput" type="search" placeholder="搜索记忆 / 偏好 / 决定" value="${esc(query || "")}" autocomplete="off"></div>
-      <div id="memoryList"><p class="sheet-sub">正在读取…</p></div>
-      <div class="sheet-footer"><button class="btn" data-act="memory-add">＋ 新增记忆</button><button class="btn ghost" data-act="sheet-close">关闭</button></div>`);
+      <button class="btn" data-act="memory-add" style="width:100%;margin:8px 0 12px">＋ 新增记忆</button>
+      <div id="memoryList"><p class="sheet-sub">正在读取…</p></div>`);
     const input = $("#memorySearchInput");
     if (input) {
       let timer = null;
@@ -3923,7 +3923,7 @@
       <div class="field"><input id="memoryTitleInput" placeholder="标题（可空）" maxlength="80"></div>
       <div class="field"><textarea id="memoryTextInput" rows="5" placeholder="内容，例如：Krox 要求所有文档同时给 .md 和飞书链接"></textarea></div>
       <div class="field"><input id="memoryTagsInput" placeholder="标签，用逗号分隔（可空）"></div>
-      <div class="sheet-footer"><button class="btn" data-act="memory-save">保存</button><button class="btn ghost" data-act="sheet-close">取消</button></div>`);
+      <button class="btn" data-act="memory-save" style="width:100%;margin-top:10px">保存</button>`);
     const text = $("#memoryTextInput");
     if (text) text.focus();
   }
