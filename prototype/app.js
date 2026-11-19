@@ -4024,8 +4024,6 @@
       ["i-moon", "外观", "theme"],
       ["i-chat", "会话管理", "sessions"],
       ["i-clock", "重新加载", "reload"],
-      ["i-flow", "功能说明", "features"],
-      ["i-info", "设计说明", "design-note"]
     ];
     openSheet('<h3>设置</h3><p class="sheet-sub">只列出已经能工作的功能。</p><div class="group-card">' +
       rows.map(([icon, label, act]) => '<button class="menu-row" data-act="' + act + '"><span class="menu-ic ic-muted"><svg class="ic"><use href="#' + icon + '"/></svg></span><span class="menu-label">' + label + '</span><svg class="ic chev"><use href="#i-chev"/></svg></button>').join('') +
