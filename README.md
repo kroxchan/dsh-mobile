@@ -2,9 +2,13 @@
 
 <p align="center"><img src="brand/dsh-bot-icon-d-refined-192.png" width="104" alt="DSH Bot"></p>
 
-**DSH Bot 是运行在本机 DSH 之上的多 Bot 协作客户端。**
+**DSH Bot = DeepSeek Harness + 装在其上的 Bot 层。**
 
-手机端 `DSH Mobile` 只是它的一部分。同一个 Bot 组织还接入了 **DSH Agent** 和 **QQ Bot**，共用工作区、任务板、审批流和长期记忆。
+DeepSeek Harness（DSH）提供运行时、会话、工具和执行能力；在已经运行的 DSH 之上安装并配置 Bot 层之后，才有 Bot 身份、群聊、任务板、审批、共享记忆和手机端入口。
+
+手机端 `DSH Mobile` 是这套 Bot 层的移动入口，不是独立产品。
+
+Bot 层不是另一个模型，也不是独立服务；它是装在 DSH 工作区之上的 Bot 身份、路由、任务板、记忆，以及本项目的移动网关和前端。
 
 - 手机三页：消息 / 通讯录 / 我的
 - 多 Bot 私聊、群聊、DSH Agent 会话
@@ -14,7 +18,7 @@
 - 图片上传与查看、Markdown 表格、任务卡、复制消息
 - 会话置顶 / 清除、新建会话、历史会话、用量与余额
 - 任务完成 / 需要审批时的应用内提醒；支持 Web Push 系统通知
-- 共享知识库：DSH Agent、QQ Bot、手机端共用 `knowledge/memory.json`
+- 共享知识库：DSH Agent、手机端和其他已接入的 Bot 共用 `knowledge/memory.json`
 - PWA 图标、manifest、iOS Web Clip 配置
 
 电脑端 DSH 界面不受影响。
@@ -31,13 +35,13 @@
 
 | 是 | 不是 |
 |---|---|
-| 多 Bot 协作客户端：Bot 身份、群聊、任务板、审批、记忆 | 不是单纯的 DeepSeek Harness 手机壳 |
-| 手机端 + DSH Agent + QQ Bot 共用一套工作区 | 不是只有一个聊天输入框 |
+| DSH + Bot 层：DSH 负责执行，Bot 层负责组织协作 | 不是单纯的 DeepSeek Harness 手机壳 |
+| 在 DSH 基础上安装 Bot 后，手机端和 DSH Agent 共用一套工作区 | 不是只有一个聊天输入框 |
 | 运行在本机 DSH 之上的 Bot 产品层 | 不是 DeepSeek 官方产品 |
 | 依赖 DSH 作为执行后端 | 不是独立云端 Bot 服务 |
-| 可以把同一个 Bot 组织接到手机和 QQ | 不是把 DSH Web GUI 等比缩小 |
+| 手机端只是 Bot 层的一个入口 | 不是把 DSH Web GUI 等比缩小 |
 
-**DeepSeek Harness 是运行时和执行后端；DSH Bot 是在它之上做 Bot 组织、协作和移动端体验的产品层。** 没有 DSH，DSH Bot 不能独立运行；但只有 DSH，也没有这套多 Bot 协作界面、任务流和共享记忆。
+**DeepSeek Harness 是运行时和执行后端；Bot 层是装在其上的协作层。** 没有 DSH，Bot 没有执行环境；只有 DSH，没有 Bot 层，也没有这套多 Bot 协作界面、任务流和共享记忆。
 
 ---
 
@@ -76,10 +80,7 @@ DSH Bot 移动网关  dsh-mobile/server.mjs  (127.0.0.1:19000)
         │  · Bot 会话 / 群聊 / 任务板 / 审批 / /__im/* 数据接口
         │  · 自动发现 DSH，并反向代理 HTTP / WebSocket
         │
-        ├────────────── 共享工作区 / 任务板 / knowledge/memory.json
-        │                              ▲
-        │                              │
-        │                        QQ Bot / QQ bridge
+        ├── Bot 层：身份 / 群聊 / 任务板 / 审批 / 共享记忆
         │
         ▼
 DSH Web GUI  127.0.0.1:<随机端口>
@@ -87,7 +88,7 @@ DSH Web GUI  127.0.0.1:<随机端口>
         └── DSH Agent（执行运行时）
 ```
 
-DSH Bot 不替代 DSH。DSH 关闭后，手机端只能看到连接失败或缓存状态；QQ Bot 也不能继续依赖 DSH 执行任务。
+DSH Bot 不替代 DSH。DSH 关闭后，手机端只能看到连接失败或缓存状态。
 
 ---
 
@@ -327,7 +328,7 @@ ios/DSH-Mobile-WebClip.mobileconfig
 $DSH_HOME/bot/workspace/knowledge/memory.json
 ```
 
-DSH Agent、QQ Bot、手机端共用这一份 JSON。
+DSH Agent、手机端和其他已接入的 Bot 共用这一份 JSON。
 
 接口：
 
@@ -347,7 +348,6 @@ node memory-cli.mjs stats
 
 手机端：我的 → 共享知识库，可搜索、新增、删除。
 
-QQ Bot：通过 `memory_search` / `memory_add` 工具接入；QQ bridge 的导入路径按部署环境配置。
 
 规则：
 
