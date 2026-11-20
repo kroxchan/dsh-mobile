@@ -40,7 +40,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261118z17";
+const PROTO_VERSION = "20261118z18";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1539,7 +1539,11 @@ function collectPushRunning(value) {
     }
   }
   for (const id of Object.keys(value?.work?.turns ?? {})) running.add(id);
-  return { running, names };
+  for (const id of running) {
+    if (!sessionIds.has(id)) sessionIds.set(id, id);
+    if (!names.has(id)) names.set(id, "会话");
+  }
+  return { running, names, sessionIds };
 }
 
 function pushCompletionPreview(sessionId) {

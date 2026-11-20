@@ -81,9 +81,9 @@
     notifySystem: false,
     notifyRunning: null,
     notifySeen: {},
+    pushSeen: {},
     resumeBusy: false,
     lastResumeAt: 0,
-    suppressCompletionUntil: 0,
     ownerMap: {},
     qSelected: {},
     mySessions: [],
@@ -513,16 +513,16 @@
     navigator.serviceWorker.addEventListener("message", (event) => {
       const data = event.data ?? {};
       if (data.type === "dsh-push") {
-        state.suppressCompletionUntil = Date.now() + 8000;
+        if (data.convId) state.pushSeen[data.convId] = Date.now();
         return;
       }
       if (data.type !== "dsh-push-open") return;
-      state.suppressCompletionUntil = Date.now() + 8000;
+      if (data.convId) state.pushSeen[data.convId] = Date.now();
       state.lastResumeAt = 0;
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z17", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z18", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -656,13 +656,13 @@
   function checkRunningNotifications() {
     if (!state.live) return;
     const now = collectRunningIds();
-    if (Date.now() < (state.suppressCompletionUntil ?? 0)) {
-      state.notifyRunning = now;
-      return;
-    }
     if (state.notifyRunning !== null) {
       for (const id of state.notifyRunning) {
-        if (now.has(id)) continue;
+        if (now.has(id)) {
+          delete state.pushSeen[id];
+          continue;
+        }
+        if (state.pushSeen?.[id] && Date.now() - state.pushSeen[id] < 10 * 60 * 1000) continue;
         const conv = convById(id);
         if (!conv) continue;
         const messages = state.messages[id] ?? [];
@@ -4263,10 +4263,9 @@
   async function refreshAfterResume() {
     if (!state.live || document.hidden || state.resumeBusy) return;
     state.resumeBusy = true;
-    state.suppressCompletionUntil = Date.now() + 8000;
     try {
       await liveLoadState();
-      state.notifyRunning = collectRunningIds();
+      checkRunningNotifications();
       if (state.chatId) {
         void loadDeliverables(state.chatId);
         void loadTrace(state.chatId);
@@ -4282,7 +4281,6 @@
     const now = Date.now();
     if (now - state.lastResumeAt < 1200) return;
     state.lastResumeAt = now;
-    state.suppressCompletionUntil = now + 8000;
     void refreshAfterResume();
   }
 
