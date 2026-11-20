@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <path fill="#1f1e1d" fill-rule="evenodd" d="
+    M 300 240
+    H 520
+    C 700 240 820 360 820 512
+    C 820 664 700 784 520 784
+    H 300
+    Z
+    M 300 404
+    Q 314 404 326 409
+    L 620 512
+    L 326 615
+    Q 314 620 300 620
+    Z
+  "/>
+</svg>

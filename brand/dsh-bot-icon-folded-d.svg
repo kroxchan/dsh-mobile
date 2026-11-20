@@ -1,0 +1,22 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="224" fill="#f7f6f3"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="222.5" fill="none" stroke="#1f1e1d" stroke-opacity="0.13" stroke-width="3"/>
+  <path fill="#c15f3c" fill-rule="evenodd" d="
+    M 340 220
+    H 500
+    C 660 220 780 330 820 512
+    C 780 694 660 804 500 804
+    H 340
+    C 285 804 260 680 260 512
+    C 260 344 285 220 340 220
+    Z
+    M 450 370
+    H 500
+    C 610 370 680 425 700 512
+    C 680 599 610 654 500 654
+    H 450
+    C 420 654 410 590 410 512
+    C 410 434 420 370 450 370
+    Z
+  "/>
+</svg>

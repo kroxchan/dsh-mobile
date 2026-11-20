@@ -68,6 +68,29 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 
 这是“先看出 `>`，再看出 D”的版本。
 
+## 第五版 / 当前方向：Cut D
+
+`dsh-bot-icon-cut-d.svg` 是最终整理后的版本。
+
+不是把 `>` 画进 D，也不是把左侧竖笔删到只剩一个 C。做法是：
+
+- 保留完整的 D 外轮廓；
+- 在左侧切出一个反向楔形开口；
+- 开口的负空间形成 `>`；
+- 没有独立光标、没有额外竖笔、没有第二个符号。
+
+按 logo 设计里的几条硬标准收敛：
+
+- **单一轮廓**：32px 仍能读出 D；
+- **一个切口**：没有多余装饰；
+- **光学居中**：楔形开口上下留白一致；
+- **一色可印**：Clay 单色即可成立，另有黑/白单色版；
+- **前端色系**：Paper / Ink / Clay，不引入新色。
+
+完整品牌板：
+
+![DSH Bot brand board](dsh-bot-brand-board.png)
+
 ## 文件
 
 | 文件 | 用途 |
@@ -99,6 +122,14 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 | `dsh-bot-wordmark-open-chevron.svg` / `.png` | 第四版浅色横向组合 |
 | `dsh-bot-wordmark-open-chevron-dark.svg` / `.png` | 第四版深色横向组合 |
 | `dsh-bot-icon-curved-d.svg` | 无竖笔但左侧闭合的备选稿 |
+| `dsh-bot-icon-cut-d.svg` | 当前方向：D 左侧楔形开口形成 `>` |
+| `dsh-bot-icon-cut-d-*.png` | 当前方向尺寸 |
+| `dsh-bot-icon-cut-d-dark.svg` / `-*.png` | 深色底版本 |
+| `dsh-bot-wordmark-cut-d.svg` / `.png` | 当前方向浅色横向组合 |
+| `dsh-bot-wordmark-cut-d-dark.svg` / `.png` | 当前方向深色横向组合 |
+| `dsh-bot-mark-cut-d.svg` | 透明底单色标记 |
+| `dsh-bot-mark-cut-d-black.svg` / `-white.svg` | 黑/白单色标记 |
+| `dsh-bot-brand-board.png` | 品牌板：网格、色板、字标、缩放 |
 
 ## 使用
 
