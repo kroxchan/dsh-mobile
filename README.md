@@ -353,11 +353,12 @@ QQ Bot：通过 `memory_search` / `memory_add` 工具接入；QQ bridge 的导�
 | 502 / 上游连接失败 | 确认 DSH 正在运行；检查/修改 `upstreamPort`；重启网关 |
 | 手机打不开 | 确认同一 Wi-Fi、电脑防火墙放行端口、使用局域网 IP 而不是 `127.0.0.1` |
 | 登录一直回到口令页 | 重新执行 `setup.mjs`；清除站点 cookie；确认没有旧进程占用端口 |
-| PWA 图标还是旧的 | 删除主屏幕图标，清除站点数据，重新打开 `?v=20261118z10` 后重装 |
+| PWA 图标还是旧的 | 删除主屏幕图标，清除站点数据，重新打开 `?v=20261118z12` 后重装 |
 | 没有系统通知 | 必须 HTTPS + 已安装 PWA + 通知权限；iOS 16.4+；网关和 DSH 保持运行 |
 | 我的页“今日完成”是 0 | 数据来自 `org/task-board.md` 的 completed 记录和 `updated` 日期；当天没有完成记录时就是 0。旁边会显示累计完成数 |
 | iOS Web Clip 图标不对 | 重新安装 `.mobileconfig`；旧 profile 先移除 |
 | 网关启动后马上退出 | 看 `stderr.log`；先确认 Node 22+ 和 `npm install` 完成 |
+| 打开很慢 / 长时间白屏 | 先用局域网 IP 判断是不是公网隧道慢；检查 Cloudflare Tunnel；强制刷新或重装 PWA；当前版本已启用文本压缩和版本化缓存 |
 
 日志：
 

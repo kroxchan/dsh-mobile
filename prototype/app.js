@@ -142,12 +142,27 @@
     return location.protocol === "http:" || location.protocol === "https:";
   }
 
-  async function liveFetch(path, options) {
-    const response = await fetch(path, { cache: "no-store", ...options });
-    const json = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(json?.error?.message ?? `请求失败（${response.status}）`);
-    if (json && json.ok === false) throw new Error(json?.error?.message ?? "请求失败");
-    return json;
+  async function liveFetch(path, options = {}) {
+    const method = String(options.method ?? "GET").toUpperCase();
+    const attempts = method === "GET" ? 2 : 1;
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 25000);
+      try {
+        const response = await fetch(path, { cache: "no-store", ...options, signal: controller.signal });
+        const json = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(json?.error?.message ?? `请求失败（${response.status}）`);
+        if (json && json.ok === false) throw new Error(json?.error?.message ?? "请求失败");
+        return json;
+      } catch (error) {
+        lastError = error;
+        if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 500));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastError ?? new Error("请求失败");
   }
 
   const BOT_PROFILES = [
@@ -492,7 +507,7 @@
 
   function registerNotificationWorker() {
     if (!("serviceWorker" in navigator) || !isLivePage()) return;
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z10", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z12", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -4268,7 +4283,6 @@
     } catch {}
     updateNotifyUI();
     registerNotificationWorker();
-    window.__kpaoState = state;
     void refreshMemoryCount();
     void refreshTaskBoardCount();
     refreshMyStats();

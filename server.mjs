@@ -40,7 +40,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261118z10";
+const PROTO_VERSION = "20261118z12";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -2318,6 +2318,43 @@ async function serveIm(req, res, url) {
 
 /* ---------------------------- 原型静态页 ---------------------------- */
 
+function sendProtoBuffer(req, res, buffer, contentType, cacheControl = "no-store") {
+  let body = buffer;
+  let encoding = null;
+  const accept = String(req.headers["accept-encoding"] ?? "");
+  const compressible = /^(text\/|application\/(json|javascript|xml|manifest\+json)|image\/svg)/u.test(contentType);
+  if (compressible && buffer.length > 1024) {
+    try {
+      if (/\bbr\b/i.test(accept)) {
+        body = zlib.brotliCompressSync(buffer, {
+          params: {
+            [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
+            [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buffer.length,
+          },
+        });
+        encoding = "br";
+      } else if (/\bgzip\b/i.test(accept)) {
+        body = zlib.gzipSync(buffer, { level: 6 });
+        encoding = "gzip";
+      }
+    } catch {}
+  }
+  const headers = {
+    "content-type": contentType,
+    "content-length": String(body.length),
+    "cache-control": cacheControl,
+    "referrer-policy": "no-referrer",
+    vary: "Accept-Encoding",
+  };
+  if (encoding) headers["content-encoding"] = encoding;
+  res.writeHead(200, headers);
+  if (req.method === "HEAD") {
+    res.end();
+    return;
+  }
+  res.end(body);
+}
+
 /** 把 /__proto/xxx 映射到 prototype/xxx；拒绝越出目录的路径。 */
 function servePrototype(req, res, pathname) {
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -2343,8 +2380,11 @@ function servePrototype(req, res, pathname) {
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
       return;
     }
-    // 首屏关键 CSS 直接内联，避免网络慢时只拿到 styles.css、theme-flat.css 未到时
-    // 出现“旧版/超大布局”和大面积比例错乱。
+    const contentType = PROTO_MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream";
+    const versioned = /[?&]v=/.test(String(req.url ?? ""));
+    const assetCache = versioned ? "public, max-age=31536000, immutable" : "public, max-age=3600";
+
+    // 首屏关键 CSS 直接内联；文本统一 gzip/br，避免隧道慢时白屏。
     if (rel === "index.html") {
       try {
         const html = fs.readFileSync(file, "utf8");
@@ -2354,23 +2394,29 @@ function servePrototype(req, res, pathname) {
         const inlined = html
           .replace(/<link[^>]+(?:styles|theme-flat)\.css[^>]*>/gi, "")
           .replace("</head>", styleTag + "</head>");
-        const buffer = Buffer.from(inlined, "utf8");
-        res.writeHead(200, {
-          "content-type": "text/html; charset=utf-8",
-          "content-length": String(buffer.length),
-          "cache-control": "no-store",
-          "referrer-policy": "no-referrer",
-        });
-        res.end(buffer);
+        sendProtoBuffer(req, res, Buffer.from(inlined, "utf8"), "text/html; charset=utf-8", assetCache);
         return;
       } catch (inlineError) {
         log(`inline css failed: ${String(inlineError?.message ?? inlineError)}`);
       }
     }
+
+    const isText = /^(text\/|application\/(json|javascript|xml|manifest\+json)|image\/svg)/u.test(contentType);
+    if (isText && stat.size < 3 * 1024 * 1024) {
+      fs.readFile(file, (readError, buffer) => {
+        if (readError) {
+          res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }).end("read failed");
+          return;
+        }
+        sendProtoBuffer(req, res, buffer, contentType, assetCache);
+      });
+      return;
+    }
+
     const headers = {
-      "content-type": PROTO_MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream",
+      "content-type": contentType,
       "content-length": String(stat.size),
-      "cache-control": "no-store",
+      "cache-control": assetCache,
       "referrer-policy": "no-referrer",
     };
     res.writeHead(200, headers);
