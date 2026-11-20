@@ -32,6 +32,7 @@
     pendingImageThumb: $("#pendingImageThumb"),
     quickRow: $("#quickRow"),
     composerInput: $("#composerInput"),
+    mentionBtn: $("#mentionBtn"),
     sendBtn: $("#sendBtn"),
     stopBtn: $("#stopBtn"),
     sheetLayer: $("#sheetLayer"),
@@ -522,7 +523,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z18", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z19", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -1872,6 +1873,8 @@
       }
       liveLoadChat(id);
     }
+    if (el.mentionBtn) el.mentionBtn.hidden = conv.kind !== "group";
+    el.composerInput.placeholder = conv.kind === "group" ? "发消息，@ 指定 Agent…" : "发消息…";
     if (conv.kind === "group") {
       if (!conv.memberIds) conv.memberIds = state.bots.map((b) => b.id);
       if (!state.messages[id]) state.messages[id] = [];
@@ -2333,6 +2336,42 @@
 
   /* ---------------------------- 发送 ---------------------------- */
 
+  function openMentionPicker() {
+    const conv = currentConv();
+    if (!conv || conv.kind !== "group") {
+      showToast("只有群聊可以 @ 成员");
+      return;
+    }
+    const members = (conv.memberIds || []).map((id) => state.botMap[id]).filter(Boolean);
+    if (members.length === 0) {
+      showToast("这个群还没有 Bot 成员");
+      return;
+    }
+    openSheet('<h3>@ 提到成员</h3><p class="sheet-sub">选择后插入 @名字，发送时会变成 DSH 会话提及。</p><div class="group-card">' +
+      members.map((member) => '<button class="menu-row" data-mention-pick="' + esc(member.id) + '">' +
+        botAvatar(member, "avatar-sm") +
+        '<span class="menu-label">' + esc(member.name || "Bot") + '<span class="menu-sub">' + esc(member.role || member.dept || "Bot") + '</span></span>' +
+        '<svg class="ic chev"><use href="#i-chev"/></svg></button>').join("") +
+      '</div>');
+  }
+
+  function insertMention(id) {
+    const conv = currentConv();
+    const member = state.botMap[id];
+    if (!conv || !member || conv.kind !== "group") return;
+    const input = el.composerInput;
+    const token = "@" + (member.name || "Bot") + " ";
+    const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
+    const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
+    input.value = input.value.slice(0, start) + token + input.value.slice(end);
+    input.focus();
+    input.setSelectionRange(start + token.length, start + token.length);
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 104) + "px";
+    updateComposerSend();
+    closeSheet();
+  }
+
   function resetComposer() {
     el.composerInput.value = "";
     el.composerInput.style.height = "auto";
@@ -2344,12 +2383,30 @@
     state.messages[state.chatId].push(msg);
   }
 
+  function expandMentions(text, conv) {
+    if (!conv || conv.kind !== "group" || !text.includes("@")) return text;
+    const members = (conv.memberIds || [])
+      .map((id) => state.botMap[id])
+      .filter(Boolean)
+      .filter((member) => member.name)
+      .sort((a, b) => b.name.length - a.name.length);
+    let out = text;
+    for (const member of members) {
+      const sessionId = member.sessionId || member.id;
+      const label = String(member.name).replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
+      const canonical = "@[" + label + "](dsh-session:" + sessionId + ")";
+      out = out.split("@" + member.name).join(canonical);
+    }
+    return out;
+  }
+
   function sendText(raw) {
     const typed = String(raw || "").trim();
     if (!state.chatId) return;
     if (typed === "" && !state.pendingImage) return;
     const marker = state.pendingImage ? `【图片】${state.pendingImage}` : "";
     const text = [typed, marker].filter(Boolean).join("\n");
+    const outboundText = expandMentions(text, convById(state.chatId));
     if (text.length > 1000000) {
       showToast("消息太长：单条上限约 100 万字");
       return;
@@ -2375,7 +2432,7 @@
     if (state.live) {
       state.pendingRuns[chatId] = Date.now();
       updateLiveStatus();
-      liveSend(chatId, text).catch((error) => {
+      liveSend(chatId, outboundText).catch((error) => {
         delete state.pendingRuns[chatId];
         updateLiveStatus();
         showToast("发送失败：" + error.message);
@@ -3035,6 +3092,12 @@
         return;
       }
 
+      const mentionPick = event.target.closest("[data-mention-pick]");
+      if (mentionPick) {
+        insertMention(mentionPick.dataset.mentionPick);
+        return;
+      }
+
       const memberPick = event.target.closest("[data-member-pick]");
       if (memberPick) {
         toggleMemberPick(memberPick.dataset.memberPick, memberPick);
@@ -3256,6 +3319,8 @@
         openMembers(currentConv());
       } else if (act === "load-more") {
         if (state.chatId) liveLoadEarlier(state.chatId);
+      } else if (act === "mention") {
+        openMentionPicker();
       } else if (act === "composer-plus") {
         openComposerMenu();
       } else if (act === "pick-image") {
