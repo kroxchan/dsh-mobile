@@ -492,7 +492,7 @@
 
   function registerNotificationWorker() {
     if (!("serviceWorker" in navigator) || !isLivePage()) return;
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z8", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z10", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -3862,8 +3862,13 @@
     if (bots) bots.textContent = String(state.bots.length || "—");
     const list = Object.values(state.tasks || {});
     if (tasks) tasks.textContent = String(list.filter((task) => !["completed", "cancelled"].includes(String(task.status || ""))).length);
-    const today = new Date().toISOString().slice(0, 10);
-    if (done) done.textContent = String(list.filter((task) => String(task.status) === "completed" && String(task.updated || "").slice(0, 10) === today).length);
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+    const today = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+    const completed = list.filter((task) => String(task.status) === "completed");
+    if (done) done.textContent = String(completed.filter((task) => String(task.updated || "").slice(0, 10) === today).length);
+    const totalNode = $("#doneTotal");
+    if (totalNode) totalNode.textContent = String(completed.length);
   }
 
   async function refreshTaskBoardCount() {
