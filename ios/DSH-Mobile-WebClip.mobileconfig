@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.webClip.managed</string>
+      <key>PayloadIdentifier</key>
+      <string>top.chatkrox.dshmobile.webclip</string>
+      <key>PayloadUUID</key>
+      <string>4D53482D-4D4F-4249-4C45-5745434C4950</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>URL</key>
+      <string>https://bot.chatkrox.top/__proto/</string>
+      <key>Label</key>
+      <string>DSH Mobile</string>
+      <key>FullScreen</key>
+      <true/>
+      <key>Precomposed</key>
+      <true/>
+      <key>IgnoreManifestScope</key>
+      <false/>
+    </dict>
+  </array>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadIdentifier</key>
+  <string>top.chatkrox.dshmobile.profile</string>
+  <key>PayloadUUID</key>
+  <string>4453484D-4F42-494C-452D-50524F46494C</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+  <key>PayloadDisplayName</key>
+  <string>DSH Mobile Web Clip</string>
+  <key>PayloadDescription</key>
+  <string>在 iPhone 主屏幕添加 DSH Mobile 网页入口；不是 App Store 应用，也不包含原生推送能力。</string>
+  <key>PayloadOrganization</key>
+  <string>Krox</string>
+  <key>PayloadRemovalDisallowed</key>
+  <false/>
+</dict>
+</plist>
