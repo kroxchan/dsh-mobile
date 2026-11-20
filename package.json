@@ -2,7 +2,7 @@
   "name": "dsh-mobile",
   "version": "0.5.0",
   "private": false,
-  "description": "Mobile web frontend + LAN/tunnel gateway for DeepSeek Harness (DSH)",
+  "description": "DSH Bot multi-agent collaboration client: mobile web UI + local gateway for DeepSeek Harness (DSH)",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -32,7 +32,10 @@
     "mobile",
     "webapp",
     "gateway",
-    "cloudflare-tunnel"
+    "cloudflare-tunnel",
+    "bot",
+    "multi-agent",
+    "agent"
   ],
   "files": [
     "server.mjs",

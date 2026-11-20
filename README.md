@@ -1,11 +1,14 @@
-# DSH Mobile
+# DSH Bot
 
-<p align="center"><img src="brand/dsh-bot-icon-d-refined-192.png" width="104" alt="DSH Mobile"></p>
+<p align="center"><img src="brand/dsh-bot-icon-d-refined-192.png" width="104" alt="DSH Bot"></p>
 
-把本机运行的 **DeepSeek Harness（DSH）** 接到手机上使用：一个手机端 IM 界面 + 一个本机网关。
+**DSH Bot 是运行在本机 DSH 之上的多 Bot 协作客户端。**
+
+手机端 `DSH Mobile` 只是它的一部分。同一个 Bot 组织还接入了 **DSH Agent** 和 **QQ Bot**，共用工作区、任务板、审批流和长期记忆。
 
 - 手机三页：消息 / 通讯录 / 我的
-- 私聊、群聊、DSH Agent 会话
+- 多 Bot 私聊、群聊、DSH Agent 会话
+- Bot 组织：Chief、内容、研究、项目等角色，不是单一聊天窗口
 - 审批卡、单选/多选/自定义答案卡
 - Bot 运行时状态：处理过程、工具调用、耗时
 - 图片上传与查看、Markdown 表格、任务卡、复制消息
@@ -16,7 +19,7 @@
 
 电脑端 DSH 界面不受影响。
 
-> **非官方项目**：DSH Mobile 是第三方 DSH 配套工具，不是 DeepSeek 官方产品。
+> **非官方项目**：DSH Bot 是第三方 DSH 配套产品，不是 DeepSeek 官方产品。
 >
 > 登录后手机端拥有与本机 DSH 浏览器相同的权限。只在自己或可信的人中间使用。
 >
@@ -24,11 +27,25 @@
 
 ---
 
+## 它是什么，不是什么
+
+| 是 | 不是 |
+|---|---|
+| 多 Bot 协作客户端：Bot 身份、群聊、任务板、审批、记忆 | 不是单纯的 DeepSeek Harness 手机壳 |
+| 手机端 + DSH Agent + QQ Bot 共用一套工作区 | 不是只有一个聊天输入框 |
+| 运行在本机 DSH 之上的 Bot 产品层 | 不是 DeepSeek 官方产品 |
+| 依赖 DSH 作为执行后端 | 不是独立云端 Bot 服务 |
+| 可以把同一个 Bot 组织接到手机和 QQ | 不是把 DSH Web GUI 等比缩小 |
+
+**DeepSeek Harness 是运行时和执行后端；DSH Bot 是在它之上做 Bot 组织、协作和移动端体验的产品层。** 没有 DSH，DSH Bot 不能独立运行；但只有 DSH，也没有这套多 Bot 协作界面、任务流和共享记忆。
+
+---
+
 ## 1. 前置条件
 
 | 条件 | 要求 |
 |---|---|
-| DSH Desktop | 已安装并正在运行，电脑上能打开 DSH Web GUI |
+| DSH Desktop | 已安装并正在运行，作为 Bot 的执行后端；电脑上能打开 DSH Web GUI |
 | Node.js | **22 或更高** |
 | npm | 随 Node.js 安装 |
 | 电脑 | Windows 10/11 为主要支持环境；macOS/Linux 可直接运行 `node server.mjs` |
@@ -51,19 +68,26 @@ DSH 的 Web GUI 必须在本机回环地址可访问。网关会自动探测 DSH
 ## 2. 架构
 
 ```text
-手机浏览器 / 主屏幕 PWA
+手机浏览器 / 主屏幕 PWA（DSH Mobile）
         │  HTTPS（可选：Cloudflare Tunnel 或其它反向代理）
         ▼
-dsh-mobile/server.mjs  (默认 127.0.0.1:19000，监听所有网卡)
+DSH Bot 移动网关  dsh-mobile/server.mjs  (127.0.0.1:19000)
         │  · 口令门（gate cookie）
-        │  · 自动发现本机 DSH Web GUI
-        │  · HTTP / WebSocket 反向代理
-        │  · /__im/* 手机端数据接口
+        │  · Bot 会话 / 群聊 / 任务板 / 审批 / /__im/* 数据接口
+        │  · 自动发现 DSH，并反向代理 HTTP / WebSocket
+        │
+        ├────────────── 共享工作区 / 任务板 / knowledge/memory.json
+        │                              ▲
+        │                              │
+        │                        QQ Bot / QQ bridge
+        │
         ▼
 DSH Web GUI  127.0.0.1:<随机端口>
+        │
+        └── DSH Agent（执行运行时）
 ```
 
-网关不替代 DSH；DSH 关闭后，手机端只能看到连接失败或缓存状态。
+DSH Bot 不替代 DSH。DSH 关闭后，手机端只能看到连接失败或缓存状态；QQ Bot 也不能继续依赖 DSH 执行任务。
 
 ---
 
@@ -353,7 +377,7 @@ QQ Bot：通过 `memory_search` / `memory_add` 工具接入；QQ bridge 的导�
 | 502 / 上游连接失败 | 确认 DSH 正在运行；检查/修改 `upstreamPort`；重启网关 |
 | 手机打不开 | 确认同一 Wi-Fi、电脑防火墙放行端口、使用局域网 IP 而不是 `127.0.0.1` |
 | 登录一直回到口令页 | 重新执行 `setup.mjs`；清除站点 cookie；确认没有旧进程占用端口 |
-| PWA 图标还是旧的 | 删除主屏幕图标，清除站点数据，重新打开 `?v=20261118z12` 后重装 |
+| PWA 图标还是旧的 | 删除主屏幕图标，清除站点数据，重新打开 `?v=20261118z13` 后重装 |
 | 没有系统通知 | 必须 HTTPS + 已安装 PWA + 通知权限；iOS 16.4+；网关和 DSH 保持运行 |
 | 我的页“今日完成”是 0 | 数据来自 `org/task-board.md` 的 completed 记录和 `updated` 日期；当天没有完成记录时就是 0。旁边会显示累计完成数 |
 | iOS Web Clip 图标不对 | 重新安装 `.mobileconfig`；旧 profile 先移除 |
