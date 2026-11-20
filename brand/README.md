@@ -57,6 +57,17 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 
 这是目前三版里最“融合”的一版，不再有独立光标或镂空箭头。
 
+## 第四版：去掉竖笔
+
+`dsh-bot-icon-open-chevron.svg` 把左侧的 `丨` 完全去掉，只留下开口的碗形折线：
+
+- 不再有 D 的竖笔；
+- 上、下两条弧线在右侧收成尖点；
+- 开口本身让 `>` 非常明确；
+- 左侧留白让整体仍然像 D 的碗形/缺口。
+
+这是“先看出 `>`，再看出 D”的版本。
+
 ## 文件
 
 | 文件 | 用途 |
@@ -81,6 +92,13 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 | `dsh-bot-icon-chevron-dark-*.png` | 第三版深色底尺寸 |
 | `dsh-bot-wordmark-chevron.svg` / `.png` | 第三版浅色横向组合 |
 | `dsh-bot-wordmark-chevron-dark.svg` / `.png` | 第三版深色横向组合 |
+| `dsh-bot-icon-open-chevron.svg` | 第四版去掉竖笔的开口 D/`>`，浅色底 |
+| `dsh-bot-icon-open-chevron-*.png` | 第四版浅色底尺寸 |
+| `dsh-bot-icon-open-chevron-dark.svg` | 第四版深色底 |
+| `dsh-bot-icon-open-chevron-dark-*.png` | 第四版深色底尺寸 |
+| `dsh-bot-wordmark-open-chevron.svg` / `.png` | 第四版浅色横向组合 |
+| `dsh-bot-wordmark-open-chevron-dark.svg` / `.png` | 第四版深色横向组合 |
+| `dsh-bot-icon-curved-d.svg` | 无竖笔但左侧闭合的备选稿 |
 
 ## 使用
 
