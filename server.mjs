@@ -1510,21 +1510,25 @@ async function sendPushNotification(payload) {
 function collectPushRunning(value) {
   const running = new Set();
   const names = new Map();
+  const sessionIds = new Map();
   const bots = listOf(value?.bots);
   const rooms = listOf(value?.rooms);
   const agents = listOf(value?.agents);
   for (const bot of bots) {
     names.set(bot.id, bot.name || "Bot");
+    sessionIds.set(bot.id, bot.sessionId || bot.id);
     if (bot.sessionId && sessionLiveStatus(bot.sessionId)) running.add(bot.id);
   }
   for (const room of rooms) {
     names.set(room.id, room.name || "群聊");
+    sessionIds.set(room.id, room.sessionId || room.id);
     if (room.sessionId && sessionLiveStatus(room.sessionId)) running.add(room.id);
   }
   for (const agent of agents) {
     const name = agent.name || "DSH Agent";
     for (const sessionId of Array.isArray(agent.sessions) ? agent.sessions : []) {
       names.set(sessionId, name);
+      sessionIds.set(sessionId, sessionId);
       if (sessionLiveStatus(sessionId)) running.add(sessionId);
     }
   }
@@ -1538,18 +1542,38 @@ function collectPushRunning(value) {
   return { running, names };
 }
 
+function pushCompletionPreview(sessionId) {
+  try {
+    const messages = dshSessionMessages(sessionId);
+    const last = [...messages].reverse().find((item) => item.kind === "bot" && String(item.text || "").trim() !== "");
+    if (!last) return "";
+    return String(last.text)
+      .replace(/[#*_`>~|\-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 96);
+  } catch {
+    return "";
+  }
+}
+
 async function checkPushCompletions() {
   if (readPushSubscriptions().length === 0) return;
   await refreshBotStateNow();
     const result = await botStateCached(1000);
   if (!result || result.ok !== true) return;
-  const { running, names } = collectPushRunning(result.value ?? {});
+  const { running, names, sessionIds } = collectPushRunning(result.value ?? {});
   if (pushRunning !== null) {
     for (const id of pushRunning) {
       if (running.has(id)) continue;
       const name = names.get(id) || "会话";
+      let preview = pushCompletionPreview(sessionIds.get(id) || id);
+      if (!preview) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        preview = pushCompletionPreview(sessionIds.get(id) || id);
+      }
       log(`push completion ${name} ${id}`);
-      await sendPushNotification({ title: "任务完成", body: `${name} · 已完成`, convId: id, tag: id });
+      await sendPushNotification({ title: "任务完成", body: `${name} · ${preview || "已完成"}`, convId: id, tag: id });
     }
   }
   pushRunning = running;
