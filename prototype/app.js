@@ -523,7 +523,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z19", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z20", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -1018,7 +1018,10 @@
       const selected = state.qSelected[bundle.eventId] ?? new Set();
       bundle.questions.forEach((item, index) => {
         const questionId = item.id ?? String(index);
-        const options = (item.options ?? [])
+        const optionList = item.options ?? [];
+        const hasOptions = optionList.length > 0;
+        const isPlanReview = item.intent?.kind === "plan-review";
+        const options = optionList
           .map((option) => {
             const label = typeof option === "string" ? option : option.label;
             const description = typeof option === "string" ? "" : option.description ?? "";
@@ -1029,11 +1032,12 @@
           })
           .join("");
         parts.push(`<div class="interaction-card">
-          <div class="interaction-head"><svg class="ic"><use href="#i-spark"/></svg><b>需要你选择</b></div>
+          <div class="interaction-head"><svg class="ic"><use href="#i-spark"/></svg><b>${isPlanReview ? "计划审核" : hasOptions ? "需要你选择" : "需要你填写"}</b></div>
           <div class="interaction-line">${esc(item.question ?? "")}</div>
-          <div class="option-list">${options}</div>
-          ${item.allowCustom ? `<input class="interaction-input" id="qcustom_${esc(bundle.eventId)}_${index}" placeholder="或自己写一个答案">` : ""}
-          ${`<div class="interaction-actions"><button class="btn primary" data-question-submit="${esc(bundle.eventId)}" data-question-id="${esc(questionId)}" data-index="${index}" data-session="${esc(bundle.sessionId ?? "")}" ${item.multiSelect || item.allowCustom ? "" : ""}>确认</button></div>`}
+          ${item.detail ? `<div class="interaction-reason">${esc(item.detail)}</div>` : ""}
+          ${hasOptions ? `<div class="option-list">${options}</div>` : ""}
+          <input class="interaction-input" id="qcustom_${esc(bundle.eventId)}_${index}" placeholder="${hasOptions ? "或填写其他答案（可选）" : "请输入答案"}">
+          <div class="interaction-actions"><button class="btn primary" data-question-submit="${esc(bundle.eventId)}" data-question-id="${esc(questionId)}" data-index="${index}" data-session="${esc(bundle.sessionId ?? "")}">确认</button></div>
         </div>`);
       });
     }
