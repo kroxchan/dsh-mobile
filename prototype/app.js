@@ -492,7 +492,7 @@
 
   function registerNotificationWorker() {
     if (!("serviceWorker" in navigator) || !isLivePage()) return;
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z7", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -4150,7 +4150,7 @@
     const dark =
       mode === "dark" ||
       (mode === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    if (el.metaTheme) el.metaTheme.setAttribute("content", dark ? "#0c0e12" : "#f1f3f7");
+    if (el.metaTheme) el.metaTheme.setAttribute("content", dark ? "#1b1a18" : "#f7f6f3");
     if (el.themeValue) {
       el.themeValue.textContent = mode === "auto" ? "跟随系统" : mode === "dark" ? "深色" : "浅色";
     }

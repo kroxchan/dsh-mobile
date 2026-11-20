@@ -55,7 +55,11 @@
     "prototype/sw.js",
     "memory-store.mjs",
     "memory-cli.mjs",
-    "brand"
+    "brand",
+    "prototype/manifest.webmanifest",
+    "prototype/icon.svg",
+    "prototype/icon-*.png",
+    "ios"
   ],
   "dependencies": {
     "web-push": "^4.0.0"
