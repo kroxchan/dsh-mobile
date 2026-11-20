@@ -19,6 +19,23 @@
 | Coral | `#F06B4F` | 终端光标、强调 |
 | Mint | `#7BE0C1` | 运行轨迹、状态点 |
 
+## 第二版：D 与 `>` 融合
+
+`dsh-bot-icon-fused.svg` 是第二版主标识：  
+D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。远看是 D，近看是终端提示符，两个符号共用同一条轮廓。
+
+这一版只用前端已有的色彩：
+
+```text
+纸白 #f7f6f3
+墨黑 #1f1e1d
+陶土 #c15f3c / #d97a55
+```
+
+- 浅色底：纸白底 + 陶土 D；
+- 深色底：墨黑底 + 陶土 D；
+- 不再引入薄荷色和额外光效。
+
 ## 文件
 
 | 文件 | 用途 |
@@ -31,6 +48,12 @@
 | `dsh-bot-wordmark.svg` | 深色底横向组合 |
 | `dsh-bot-wordmark.png` | 横向组合 PNG |
 | `dsh-bot-wordmark-light.svg` / `.png` | 浅色底横向组合 |
+| `dsh-bot-icon-fused.svg` | 第二版 D + `>` 融合图标，浅色底 |
+| `dsh-bot-icon-fused-*.png` | 第二版浅色底尺寸 |
+| `dsh-bot-icon-fused-dark.svg` | 第二版深色底 |
+| `dsh-bot-icon-fused-dark-*.png` | 第二版深色底尺寸 |
+| `dsh-bot-wordmark-fused.svg` / `.png` | 第二版浅色横向组合 |
+| `dsh-bot-wordmark-fused-dark.svg` / `.png` | 第二版深色横向组合 |
 
 ## 使用
 
