@@ -39,9 +39,9 @@ cd dsh-mobile
 
 ## 3. 安装依赖
 
-`ash
+```bash
 npm install
-`
+```
 
 Web Push 需要 web-push 依赖，第一次运行前必须安装。
 

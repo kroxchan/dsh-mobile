@@ -7,12 +7,13 @@
  * - 条目有来源、标签、作用域，回答时可以引用。
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 
 const WORKSPACE =
   process.env.DSH_WORKSPACE ||
-  path.join(process.env.DSH_HOME || "C:/Users/Krox/.dsh", "bot", "workspace");
+  path.join(process.env.DSH_HOME || path.join(os.homedir(), ".dsh"), "bot", "workspace");
 
 export const MEMORY_FILE =
   process.env.DSH_MEMORY_FILE || path.join(WORKSPACE, "knowledge", "memory.json");

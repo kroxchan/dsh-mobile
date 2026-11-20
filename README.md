@@ -1,109 +1,405 @@
 # DSH Mobile
 
-把本机运行的 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）Web GUI 接到手机上使用：一个手机端 IM 界面 + 一个本地网关。
+<p align="center"><img src="brand/dsh-bot-icon-d-refined-192.png" width="104" alt="DSH Mobile"></p>
 
-- 手机三页结构：消息 / 通讯录 / 我的
-- 聊天框：私聊、群聊、DSH Agent 会话
-- 审批卡「允许 / 拒绝」、选择题卡（单选 / 多选 / 自定义答案）
-- Bot 运行状态：思考中、正在调用哪个工具、耗时
+把本机运行的 **DeepSeek Harness（DSH）** 接到手机上使用：一个手机端 IM 界面 + 一个本机网关。
+
+- 手机三页：消息 / 通讯录 / 我的
+- 私聊、群聊、DSH Agent 会话
+- 审批卡、单选/多选/自定义答案卡
+- Bot 运行时状态：处理过程、工具调用、耗时
 - 图片上传与查看、Markdown 表格、任务卡、复制消息
-- 会话置顶 / 清除、新建会话、历史会话切换、用量与余额
-- 任务提醒：任务完成 / 需要审批或选择时弹应用内提醒；支持授权后走系统通知
+- 会话置顶 / 清除、新建会话、历史会话、用量与余额
+- 任务完成 / 需要审批时的应用内提醒；支持 Web Push 系统通知
+- 共享知识库：DSH Agent、QQ Bot、手机端共用 `knowledge/memory.json`
+- PWA 图标、manifest、iOS Web Clip 配置
 
-电脑端 DSH 界面完全不受影响。
+电脑端 DSH 界面不受影响。
 
-> **非官方项目**：dsh-mobile 是第三方 DSH 配套工具，不是 DeepSeek 官方产品。
-> 手机端登录后拥有与本机 DSH 浏览器相同的权限，请只自己或可信的人使用。
+> **非官方项目**：DSH Mobile 是第三方 DSH 配套工具，不是 DeepSeek 官方产品。
 >
-> 安装：见 [INSTALL.md](INSTALL.md)  
-> 发布到社区市场/试用说明：见 [COMMUNITY.md](COMMUNITY.md)
+> 登录后手机端拥有与本机 DSH 浏览器相同的权限。只在自己或可信的人中间使用。
+>
+> 安装细节见 [INSTALL.md](INSTALL.md)，社区说明见 [COMMUNITY.md](COMMUNITY.md)。
 
-- 产物入口：文档（md / txt / docx / pdf / xlsx / pptx / csv / json）和图片都支持，按轮次分组，可在手机内直接打开预览
+---
 
-## 架构
+## 1. 前置条件
 
+| 条件 | 要求 |
+|---|---|
+| DSH Desktop | 已安装并正在运行，电脑上能打开 DSH Web GUI |
+| Node.js | **22 或更高** |
+| npm | 随 Node.js 安装 |
+| 电脑 | Windows 10/11 为主要支持环境；macOS/Linux 可直接运行 `node server.mjs` |
+| 手机 | 与电脑同一 Wi-Fi（局域网访问） |
+| 公网访问 | 一个 HTTPS 入口，推荐 Cloudflare Tunnel，并支持 WebSocket |
+| PWA 通知 | HTTPS；iOS 需要 16.4+，且必须“添加到主屏幕” |
+| iOS 描述文件 | Safari；未签名 profile 会显示警告 |
+
+检查环境：
+
+```bash
+node -v
+npm -v
 ```
-手机浏览器 / 主屏幕 App
+
+DSH 的 Web GUI 必须在本机回环地址可访问。网关会自动探测 DSH 端口；探测失败时用 `config.json` 的 `upstreamPort` 作为提示端口。
+
+---
+
+## 2. 架构
+
+```text
+手机浏览器 / 主屏幕 PWA
         │  HTTPS（可选：Cloudflare Tunnel 或其它反向代理）
         ▼
-dsh-mobile/server.mjs  (127.0.0.1:19000)
-        │  · 口令门（cookie）
-        │  · 自动发现本机 DSH Web GUI 端口
-        │  · 反向代理（含 WebSocket）
+dsh-mobile/server.mjs  (默认 127.0.0.1:19000，监听所有网卡)
+        │  · 口令门（gate cookie）
+        │  · 自动发现本机 DSH Web GUI
+        │  · HTTP / WebSocket 反向代理
+        │  · /__im/* 手机端数据接口
         ▼
 DSH Web GUI  127.0.0.1:<随机端口>
 ```
 
-## 快速开始
+网关不替代 DSH；DSH 关闭后，手机端只能看到连接失败或缓存状态。
 
-1. 安装 Node.js 22+，并确保本机 DSH 正在运行；
-2. 安装依赖：
+---
 
-   ```bash
-   npm install
-   ```
+## 3. 快速开始
 
-3. 在本目录执行：
+### 3.1 下载并安装
 
-   ```bash
-   node setup.mjs
-   ```
+```bash
+git clone <repository-url> dsh-mobile
+cd dsh-mobile
+npm install
+```
 
-   会生成 `config.json` 并打印一次性访问口令（口令只以 scrypt 派生值保存）。
+没有 Git 时，下载 ZIP 解压后进入目录，再执行 `npm install`。
 
-4. 启动网关：
+### 3.2 生成配置
 
-   ```bash
-   node server.mjs
-   ```
+```bash
+node setup.mjs
+```
 
-   Windows 也可以用 `start.ps1`；停止用 `stop.ps1`。
+它会：
 
-4. 手机访问 `http://<本机IP>:19000`，输入口令。
-   手机 UA 会自动跳到 `/__proto/` 的手机界面；电脑访问同一个地址仍是 DSH 原界面，
-   手机想临时看原界面可加 `?desktop=1`。
+- 生成 `config.json`；
+- 生成随机手机访问口令；
+- 只把口令的 scrypt 派生值和 cookie 签名密钥写入磁盘；
+- 在终端打印一次明文口令。
 
-### 公网访问
+自定义口令：
 
-自行准备 HTTPS 入口（例如 Cloudflare Tunnel），把域名指向 `http://127.0.0.1:19000` 即可。
-`launch-tunnel.vbs` 是一个 Windows 下从 Cloudflared 服务注册项读取 token 的启动示例，
-按自己的环境修改或不用。
+```bash
+node setup.mjs "YOUR_PASSPHRASE"
+```
 
-## 安全说明
+注意：
 
-- `config.json` 含口令派生值与 cookie 签名密钥，**不要提交、不要外传**（已在 `.gitignore`）。
-- 登录页是公开的，但必须输入口令；连续错误会按 IP 限流。
-- 登录后手机端拥有与本机浏览器相同的权限，请只在可信网络中开放。
-- 换口令：`node setup.mjs 新口令`，然后重启网关。
+- 重新执行 `setup.mjs` 会覆盖现有 `config.json`；
+- 自定义口令可能留在 shell 历史里，敏感环境请用随机口令；
+- `config.json` 不要提交、截图或外传。
 
-## 目录
+### 3.3 启动网关
+
+```bash
+node server.mjs
+```
+
+Windows 也可以：
+
+```powershell
+.\start.ps1
+```
+
+停止：
+
+```powershell
+.\stop.ps1
+```
+
+默认监听：
+
+```text
+http://127.0.0.1:19000
+```
+
+### 3.4 手机访问
+
+局域网内打开：
+
+```text
+http://<电脑局域网IP>:19000
+```
+
+输入 `setup.mjs` 打印的口令。
+
+手机 UA 会自动进入 `/__proto/` 手机界面；电脑访问同一地址仍是 DSH 桌面界面。手机想临时看桌面版：
+
+```text
+http://<电脑局域网IP>:19000/?desktop=1
+```
+
+---
+
+## 4. 配置说明
+
+### 4.1 `config.json`
+
+由 `setup.mjs` 生成，示例结构：
+
+```json
+{
+  "listenPort": 19000,
+  "upstreamPort": 61324,
+  "passSalt": "<generated-hex>",
+  "passHash": "<generated-hex>",
+  "gateSecret": "<generated-base64url>",
+  "createdAt": "YYYY-MM-DDTHH:mm:ss.sssZ"
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `listenPort` | 网关监听端口，默认 `19000`。被占用时改成其它端口 |
+| `upstreamPort` | DSH 端口提示值。网关仍会探测；DSH 固定端口时填真实值 |
+| `passSalt` | 口令 scrypt 盐，**不要手改** |
+| `passHash` | 口令 scrypt 派生值，**不要手改** |
+| `gateSecret` | 登录 cookie 签名密钥，**不要外传** |
+| `createdAt` | 配置生成时间，仅用于记录 |
+
+`config.example.json` 只有占位值，不能直接用于启动。
+
+### 4.2 换口令
+
+```bash
+node setup.mjs "NEW_PASSPHRASE"
+```
+
+然后重启网关：
+
+```powershell
+.\start.ps1 -Restart
+```
+
+或直接结束旧的 `node server.mjs` 再启动。
+
+### 4.3 环境变量
+
+| 变量 | 默认值 | 用途 |
+|---|---|---|
+| `DSH_HOME` | `~/.dsh` | DSH 数据目录；会话、Bot 状态、工作区都在这里 |
+| `DSH_REMOTE_DIR` | `~/.dsh-remote` | DSH 远程桥目录，读取 bridge cookie（可选） |
+| `DSH_WORKSPACE` | `$DSH_HOME/bot/workspace` | 共享工作区；知识库、任务板等 |
+| `DSH_MEMORY_FILE` | `$DSH_WORKSPACE/knowledge/memory.json` | 共享记忆文件路径 |
+
+端口以 `config.json` 为准，不走环境变量。
+
+### 4.4 公网 HTTPS
+
+公网访问需要 HTTPS；Cloudflare Tunnel 示例：
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:19000
+```
+
+固定域名时，在 Tunnel 的 Public Hostname 中指向：
+
+```text
+http://127.0.0.1:19000
+```
+
+要求：
+
+- 反向代理必须支持 WebSocket；
+- 不要把 DSH 的原始端口直接暴露到公网；
+- Tunnel token、Cloudflare API token 只放在本机服务配置或环境变量里，**不要写进仓库**；
+- `launch-tunnel.vbs` 只是读取本机 token 的示例，按自己的环境修改。
+
+---
+
+## 5. PWA 与图标
+
+### 5.1 Web App Manifest
+
+配置文件：
+
+```text
+prototype/manifest.webmanifest
+```
+
+包含：
+
+- `name`: `DSH Mobile`
+- `short_name`: `DSH`
+- `display`: `standalone`
+- `orientation`: `portrait`
+- `theme_color` / `background_color`: `#f7f6f3`
+- 192 / 512 普通图标
+- 192 / 512 maskable 图标
+
+图标文件：
+
+```text
+prototype/icon.svg
+prototype/icon-32.png
+prototype/icon-180.png
+prototype/icon-192.png
+prototype/icon-512.png
+prototype/icon-1024.png
+prototype/icon-maskable-192.png
+prototype/icon-maskable-512.png
+```
+
+### 5.2 添加到主屏幕
+
+**iPhone / iPad**
+
+1. Safari 打开网关地址；
+2. 分享 → 添加到主屏幕；
+3. 从主屏幕启动。
+
+iOS 16.4+ 才支持 Web Push；必须从主屏幕 PWA 启动并授予通知权限。网关或 DSH 关闭时无法推送。
+
+**Android**
+
+Chrome 打开后选择“安装应用”或“添加到主屏幕”。图标不更新时，删除旧图标后重新安装。
+
+### 5.3 iOS Web Clip 描述文件
+
+文件：
+
+```text
+ios/DSH-Mobile-WebClip.mobileconfig
+```
+
+它会在主屏幕生成一个全屏网页入口，并已嵌入 DSH 图标。
+
+安装：
+
+1. 用 Safari 下载 `.mobileconfig`；
+2. 设置 → 通用 → VPN 与设备管理 → 已下载的描述文件；
+3. 安装；
+4. 回主屏幕。
+
+说明：
+
+- 这是 **Web Clip**，不是 App Store 原生 App；
+- 未签名的 profile 会显示“未签名”警告；正式分发应使用 Apple Developer 证书签名或 MDM；
+- 换域名后修改 XML 里的 `URL` 再重新安装；
+- 通知可靠性不如 Safari 的 PWA，重要通知优先用 PWA。
+
+---
+
+## 6. 共享知识库
+
+数据文件默认：
+
+```text
+$DSH_HOME/bot/workspace/knowledge/memory.json
+```
+
+DSH Agent、QQ Bot、手机端共用这一份 JSON。
+
+接口：
+
+```text
+GET    /__im/memory?q=<keyword>&limit=50
+POST   /__im/memory
+DELETE /__im/memory?id=<id>
+```
+
+CLI：
+
+```bash
+node memory-cli.mjs search "关键词"
+node memory-cli.mjs add "标题" "长期有效的事实" "tag1,tag2"
+node memory-cli.mjs stats
+```
+
+手机端：我的 → 共享知识库，可搜索、新增、删除。
+
+QQ Bot：通过 `memory_search` / `memory_add` 工具接入；QQ bridge 的导入路径按部署环境配置。
+
+规则：
+
+- 只记录长期偏好、决定、稳定事实；
+- 不记录密码、验证码、token、cookie、隐私数据；
+- 记忆文件不要提交到公开仓库；`knowledge/memory.json` 属于运行数据。
+
+---
+
+## 7. 安全
+
+- `config.json` 含口令派生值和 cookie 签名密钥，已在 `.gitignore` 中忽略；
+- 不要把 `config.json`、`.credentials.yaml`、`secrets.json`、gate cookie、Tunnel token 写进 README、截图或提交；
+- 登录页公开，但必须输入口令；连续错误会按 IP 限流；
+- 手机端登录后拥有本机 DSH 浏览器权限，不要在不可信网络公开；
+- 公网使用时只开 HTTPS，不直接暴露 `19000`；
+- 不再使用时关闭 Tunnel 和网关；
+- 换口令或怀疑泄露时，重新执行 `setup.mjs` 并重启网关。
+
+---
+
+## 8. 常见问题
+
+| 现象 | 处理 |
+|---|---|
+| `EADDRINUSE` | 改 `config.json` 的 `listenPort`，同步修改 Tunnel / 防火墙 |
+| 502 / 上游连接失败 | 确认 DSH 正在运行；检查/修改 `upstreamPort`；重启网关 |
+| 手机打不开 | 确认同一 Wi-Fi、电脑防火墙放行端口、使用局域网 IP 而不是 `127.0.0.1` |
+| 登录一直回到口令页 | 重新执行 `setup.mjs`；清除站点 cookie；确认没有旧进程占用端口 |
+| PWA 图标还是旧的 | 删除主屏幕图标，清除站点数据，重新打开 `?v=20261118z7` 后重装 |
+| 没有系统通知 | 必须 HTTPS + 已安装 PWA + 通知权限；iOS 16.4+；网关和 DSH 保持运行 |
+| iOS Web Clip 图标不对 | 重新安装 `.mobileconfig`；旧 profile 先移除 |
+| 网关启动后马上退出 | 看 `stderr.log`；先确认 Node 22+ 和 `npm install` 完成 |
+
+日志：
+
+```text
+gateway.log
+stdout.log
+stderr.log
+```
+
+这些文件都是运行数据，不要提交。
+
+---
+
+## 9. 目录
 
 | 路径 | 作用 |
 |---|---|
-| `server.mjs` | 网关：口令门、DSH 自动发现、反向代理、`/__im/*` 数据接口、审批/选择题事件通道 |
-| `setup.mjs` | 生成 `config.json`（随机口令 + scrypt 派生 + 签名密钥） |
-| `prototype/` | 手机端 IM 前端（纯静态，无构建步骤） |
-| `gateway-guard.js` | 手机端 DSH 原界面的断线守护脚本 |
-| `start.ps1` / `stop.ps1` | Windows 启动 / 停止网关 |
-| `launch-gateway.vbs` / `launch-tunnel.vbs` | 隐藏窗口启动网关 / Cloudflare Tunnel 的示例 |
-| `config.example.json` | 配置字段示例（真实配置由 `setup.mjs` 生成） |
+| `server.mjs` | 网关：口令门、DSH 发现、反向代理、`/__im/*` API |
+| `setup.mjs` | 生成 `config.json` |
+| `prototype/` | 手机端静态前端 |
+| `prototype/manifest.webmanifest` | PWA 配置 |
+| `prototype/icon-*.png` / `icon.svg` | Web App 图标 |
+| `ios/DSH-Mobile-WebClip.mobileconfig` | iOS Web Clip 配置 |
+| `memory-store.mjs` / `memory-cli.mjs` | 共享记忆存储与 CLI |
+| `gateway-guard.js` | DSH 原界面断线守护 |
+| `start.ps1` / `stop.ps1` | Windows 启停 |
+| `launch-gateway.vbs` / `launch-tunnel.vbs` | 隐藏窗口启动示例 |
+| `brand/` | DSH Bot 标识、品牌板、导出图标 |
+| `config.example.json` | 配置字段占位示例 |
 
-## 环境变量
+---
 
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `DSH_HOME` | `~/.dsh` | DSH 数据目录（会话、Bot 状态等） |
-| `DSH_REMOTE_DIR` | `~/.dsh-remote` | DSH 远程桥目录（可选） |
+## 10. 已知边界
 
-端口在 `config.json` 的 `listenPort`（默认 19000）与 `upstreamPort`（DSH 提示端口，默认 61324）中修改。
+- 依赖本机 DSH 正在运行，不是独立云端服务；
+- 首次打开很大的会话日志需要解析时间，之后走增量缓存；
+- 审批 / 选择题依赖 DSH 事件通道，断线会自动重连；
+- 共享记忆目前是关键词检索，不是向量库/RAG；
+- Web Push 受系统、浏览器、PWA 安装状态和网关在线状态影响；
+- iOS `.mobileconfig` 是 Web Clip，不是原生 App。
 
-## 已知边界
-
-- 依赖本机 DSH 正在运行；网关只做代理与数据适配，不替代 DSH。
-- 会话日志很大的情况下，首次打开该会话需要解析 1–2 秒，之后走增量缓存。
-- 审批 / 选择题依赖与 DSH 的事件通道；通道断开会自动重连。
-- 前端导航、模型选择、权限预设等部分入口仍是占位。
+---
 
 ## License
 
-仓库未附带开源许可证；如需对外分发，请自行补充（MIT / Apache-2.0 / 内部使用声明等）。
+MIT，见 [LICENSE](LICENSE)。
