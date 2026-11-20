@@ -1,0 +1,20 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="224" fill="#f7f6f3"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="222.5" fill="none" stroke="#1f1e1d" stroke-opacity="0.13" stroke-width="3"/>
+  <path fill="#c15f3c" fill-rule="evenodd" d="
+    M 360 250
+    H 500
+    A 260 262 0 0 1 500 774
+    H 360
+    Q 350 774 350 764
+    V 260
+    Q 350 250 360 250
+    Z
+    M 350 410
+    Q 362 410 374 415
+    L 580 512
+    L 374 609
+    Q 362 614 350 614
+    Z
+  "/>
+</svg>

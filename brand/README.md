@@ -91,6 +91,18 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 
 ![DSH Bot brand board](dsh-bot-brand-board.png)
 
+## 第六版 / D 形体修正
+
+`dsh-bot-icon-d-refined.svg` 修正了 D 本身的比例：
+
+- 宽度从 520 收到 410，高度 524，接近正常大写 D 的比例；
+- 右侧用真正的椭圆弧收口，不再是方块拼圆；
+- 左侧上下角做 10px 光学圆角；
+- 楔形切口收到 204 高，点落在 580；
+- 保留 `>` 的负空间，但先看是一个比例正确的 D。
+
+品牌板：`dsh-bot-brand-board-refined.png`
+
 ## 文件
 
 | 文件 | 用途 |
@@ -130,6 +142,12 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 | `dsh-bot-mark-cut-d.svg` | 透明底单色标记 |
 | `dsh-bot-mark-cut-d-black.svg` / `-white.svg` | 黑/白单色标记 |
 | `dsh-bot-brand-board.png` | 品牌板：网格、色板、字标、缩放 |
+| `dsh-bot-icon-d-refined.svg` / `-*.png` | 第六版：比例修正后的 D |
+| `dsh-bot-icon-d-refined-dark.svg` / `-*.png` | 第六版深色底 |
+| `dsh-bot-wordmark-d-refined.svg` / `.png` | 第六版浅色横向组合 |
+| `dsh-bot-wordmark-d-refined-dark.svg` / `.png` | 第六版深色横向组合 |
+| `dsh-bot-mark-d-refined.svg` / `-1024.png` | 第六版透明标记 |
+| `dsh-bot-brand-board-refined.png` | 第六版品牌板 |
 
 ## 使用
 
