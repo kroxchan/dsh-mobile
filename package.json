@@ -2,7 +2,7 @@
   "name": "dsh-mobile",
   "version": "0.5.0",
   "private": false,
-  "description": "DSH Bot multi-agent collaboration client: mobile web UI + local gateway for DeepSeek Harness (DSH)",
+  "description": "DSH Bot mobile frontend + local gateway for DeepSeek Harness and DS Bot (this repository is UI/gateway, not the bot kernel)",
   "type": "module",
   "engines": {
     "node": ">=22"

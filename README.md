@@ -1,14 +1,24 @@
-# DSH Bot
+# DSH Bot · Mobile Frontend
 
 <p align="center"><img src="brand/dsh-bot-icon-d-refined-192.png" width="104" alt="DSH Bot"></p>
 
-**DSH Bot = DeepSeek Harness + 装在其上的 Bot 层。**
+**这个仓库是 DSH Bot 的手机前端 + 网关，不是 Bot 内核。**
 
-DeepSeek Harness（DSH）提供运行时、会话、工具和执行能力；在已经运行的 DSH 之上安装并配置 Bot 层之后，才有 Bot 身份、群聊、任务板、审批、共享记忆和手机端入口。
+完整层级是：
 
-手机端 `DSH Mobile` 是这套 Bot 层的移动入口，不是独立产品。
+```text
+DeepSeek Harness（DSH）        运行时、会话、工具、执行能力
+        │
+DS Bot（插件 / Bot 内核）       把 DSH 改造成可组织、可调度的 Bot
+        │
+DSH Mobile（本仓库）           手机前端 + 本机网关，只负责界面接入
+```
 
-Bot 层不是另一个模型，也不是独立服务；它是装在 DSH 工作区之上的 Bot 身份、路由、任务板、记忆，以及本项目的移动网关和前端。
+- **DSH**：底座，提供执行能力；
+- **DS Bot**：装在 DSH 上的插件/内核层，负责 Bot 身份、组织、调度；
+- **DSH Mobile / 本仓库**：只做手机端前端和网关，不包含 Bot 内核，也不包含 DSH 运行时。
+
+所以必须先有 DSH，并完成 DS Bot 的安装/配置，再用这个前端把 Bot 接到手机。
 
 - 手机三页：消息 / 通讯录 / 我的
 - 多 Bot 私聊、群聊、DSH Agent 会话
@@ -35,13 +45,13 @@ Bot 层不是另一个模型，也不是独立服务；它是装在 DSH 工作�
 
 | 是 | 不是 |
 |---|---|
-| DSH + Bot 层：DSH 负责执行，Bot 层负责组织协作 | 不是单纯的 DeepSeek Harness 手机壳 |
-| 在 DSH 基础上安装 Bot 后，手机端和 DSH Agent 共用一套工作区 | 不是只有一个聊天输入框 |
-| 运行在本机 DSH 之上的 Bot 产品层 | 不是 DeepSeek 官方产品 |
-| 依赖 DSH 作为执行后端 | 不是独立云端 Bot 服务 |
-| 手机端只是 Bot 层的一个入口 | 不是把 DSH Web GUI 等比缩小 |
+| DSH Bot 的手机前端和本机网关 | 不是 Bot 内核 |
+| 负责把 DS Bot 的界面接到手机 | 不是 DSH 运行时 |
+| 依赖 DSH + DS Bot 才能工作 | 不是独立的 Bot 服务 |
+| 展示 Bot 会话、任务、审批和记忆 | 不是把 DSH Web GUI 等比缩小 |
+| 一个可安装的前端层 | 不是 DeepSeek 官方产品 |
 
-**DeepSeek Harness 是运行时和执行后端；Bot 层是装在其上的协作层。** 没有 DSH，Bot 没有执行环境；只有 DSH，没有 Bot 层，也没有这套多 Bot 协作界面、任务流和共享记忆。
+**DSH 是运行时，DS Bot 是插件/内核，本仓库只是前端和网关。** 没有 DSH，Bot 没有执行环境；没有 DS Bot，DSH 只是一个普通 Harness；只有 DSH + DS Bot + 本前端，才是完整的手机 Bot 体验。
 
 ---
 
@@ -50,6 +60,7 @@ Bot 层不是另一个模型，也不是独立服务；它是装在 DSH 工作�
 | 条件 | 要求 |
 |---|---|
 | DSH Desktop | 已安装并正在运行，作为 Bot 的执行后端；电脑上能打开 DSH Web GUI |
+| DS Bot | 已在 DSH 上安装并完成 Bot 配置；本仓库不提供 Bot 内核 |
 | Node.js | **22 或更高** |
 | npm | 随 Node.js 安装 |
 | 电脑 | Windows 10/11 为主要支持环境；macOS/Linux 可直接运行 `node server.mjs` |
@@ -72,27 +83,35 @@ DSH 的 Web GUI 必须在本机回环地址可访问。网关会自动探测 DSH
 ## 2. 架构
 
 ```text
-手机浏览器 / 主屏幕 PWA（DSH Mobile）
+手机浏览器 / 主屏幕 PWA
         │  HTTPS（可选：Cloudflare Tunnel 或其它反向代理）
         ▼
-DSH Bot 移动网关  dsh-mobile/server.mjs  (127.0.0.1:19000)
+本仓库：dsh-mobile/server.mjs  (127.0.0.1:19000)
         │  · 口令门（gate cookie）
-        │  · Bot 会话 / 群聊 / 任务板 / 审批 / /__im/* 数据接口
-        │  · 自动发现 DSH，并反向代理 HTTP / WebSocket
-        │
-        ├── Bot 层：身份 / 群聊 / 任务板 / 审批 / 共享记忆
-        │
+        │  · 手机端静态前端 / PWA 资源
+        │  · /__im/* 手机端数据适配接口
+        │  · 反向代理 HTTP / WebSocket
+        ▼
+DS Bot（插件 / Bot 内核）
+        │  · Bot 身份、组织、调度
+        │  · 会话、任务板、审批、共享记忆
         ▼
 DSH Web GUI  127.0.0.1:<随机端口>
         │
-        └── DSH Agent（执行运行时）
+        └── DeepSeek Harness 运行时
 ```
 
-DSH Bot 不替代 DSH。DSH 关闭后，手机端只能看到连接失败或缓存状态。
+这个仓库在整条链路里**只负责前端和网关**。它不实现 Bot 调度、不替代 DS Bot、也不替代 DSH；DSH 或 DS Bot 关闭/异常时，手机端只能看到连接失败、缓存状态或不完整数据。
 
 ---
 
 ## 3. 快速开始
+
+开始前先确认：
+
+1. DSH 正在本机运行；
+2. DS Bot 已安装在 DSH 上，并能正常使用 Bot 会话；
+3. 再做本仓库的安装——本仓库只安装手机前端和网关。
 
 ### 3.1 下载并安装
 
@@ -377,7 +396,7 @@ node memory-cli.mjs stats
 | 502 / 上游连接失败 | 确认 DSH 正在运行；检查/修改 `upstreamPort`；重启网关 |
 | 手机打不开 | 确认同一 Wi-Fi、电脑防火墙放行端口、使用局域网 IP 而不是 `127.0.0.1` |
 | 登录一直回到口令页 | 重新执行 `setup.mjs`；清除站点 cookie；确认没有旧进程占用端口 |
-| PWA 图标还是旧的 | 删除主屏幕图标，清除站点数据，重新打开 `?v=20261118z16` 后重装 |
+| PWA 图标还是旧的 | 删除主屏幕图标，清除站点数据，重新打开 `?v=20261118z17` 后重装 |
 | 没有系统通知 | 必须 HTTPS + 已安装 PWA + 通知权限；iOS 16.4+；网关和 DSH 保持运行 |
 | 后台完成回到 App 又弹一次完成提醒 | 已改为 push 点击直接唤醒当前页面，并在恢复时先同步运行状态，8 秒内不再重复本地提醒；更新到 z16 后重开 |
 | 我的页“今日完成”是 0 | 数据来自 `org/task-board.md` 的 completed 记录和 `updated` 日期；当天没有完成记录时就是 0。旁边会显示累计完成数 |
