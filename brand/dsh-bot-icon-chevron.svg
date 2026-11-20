@@ -1,0 +1,18 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="terra3" x1="280" y1="220" x2="780" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d97a55"/>
+      <stop offset="0.55" stop-color="#c15f3c"/>
+      <stop offset="1" stop-color="#a8432f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="#f7f6f3"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="222.5" fill="none" stroke="#1f1e1d" stroke-opacity="0.13" stroke-width="3"/>
+  <path d="M 320 250
+    H 480
+    C 650 250 770 350 810 512
+    C 770 674 650 774 480 774
+    H 320
+    Z"
+    fill="none" stroke="url(#terra3)" stroke-width="96" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

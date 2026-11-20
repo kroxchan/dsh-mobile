@@ -36,6 +36,27 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 - 深色底：墨黑底 + 陶土 D；
 - 不再引入薄荷色和额外光效。
 
+## 第三版：D 的右侧轮廓就是 `>`
+
+`dsh-bot-icon-chevron.svg` 不再把 `>` 单独放进 D，也不挖一个 `>` 的洞。
+
+它把 D 的**右侧碗形轮廓本身**做成折线尖点：
+
+- 左侧是 D 的竖笔；
+- 上、下边向右收成一个尖点；
+- 这个尖点就是 `>`，不是额外叠加的符号；
+- 远看是一个 D，近看能看出终端的折线方向。
+
+颜色继续只用前端色系：
+
+```text
+纸白 #f7f6f3
+墨黑 #1f1e1d
+陶土 #c15f3c / #d97a55
+```
+
+这是目前三版里最“融合”的一版，不再有独立光标或镂空箭头。
+
 ## 文件
 
 | 文件 | 用途 |
@@ -54,6 +75,12 @@ D 的负空间直接切出一枚 `>`，不再把光标单独放在 D 里面。�
 | `dsh-bot-icon-fused-dark-*.png` | 第二版深色底尺寸 |
 | `dsh-bot-wordmark-fused.svg` / `.png` | 第二版浅色横向组合 |
 | `dsh-bot-wordmark-fused-dark.svg` / `.png` | 第二版深色横向组合 |
+| `dsh-bot-icon-chevron.svg` | 第三版 D 的右侧轮廓就是 `>`，浅色底 |
+| `dsh-bot-icon-chevron-*.png` | 第三版浅色底尺寸 |
+| `dsh-bot-icon-chevron-dark.svg` | 第三版深色底 |
+| `dsh-bot-icon-chevron-dark-*.png` | 第三版深色底尺寸 |
+| `dsh-bot-wordmark-chevron.svg` / `.png` | 第三版浅色横向组合 |
+| `dsh-bot-wordmark-chevron-dark.svg` / `.png` | 第三版深色横向组合 |
 
 ## 使用
 
