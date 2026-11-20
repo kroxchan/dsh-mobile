@@ -492,7 +492,7 @@
 
   function registerNotificationWorker() {
     if (!("serviceWorker" in navigator) || !isLivePage()) return;
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z7", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z8", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -853,12 +853,15 @@
     const latestItems = latestTurn
       ? items.filter((item) => (Number(item.turn) || 0) === latestTurn)
       : items;
-    const count = latestItems.length;
-    const show = !!(state.chatId && count > 0);
+    const total = items.length;
+    const count = total;
+    const show = !!(state.chatId && total > 0);
     bar.hidden = !show;
     if (!show) return;
     const node = $("#deliverableCount");
     if (node) node.textContent = String(count);
+    const label = $("#deliverableLabel");
+    if (label) label.textContent = "产物";
   }
 
   function openDeliverablesSheet() {
@@ -3971,7 +3974,8 @@
       ["i-usage", "用量", "open-billing"],
       ["i-plus", "附件", "open-attachments"],
       ["i-folder", "文件", "open-files"],
-      ["i-task", "任务板", "open-jobs"]
+      ["i-task", "任务板", "open-jobs"],
+      ["i-doc", "产物", "deliverables"]
     ];
     const title = isGroup ? conv.name : state.botMap[conv.id]?.name || conv.name || "会话";
     openSheet(`<h3>会话工具</h3>
