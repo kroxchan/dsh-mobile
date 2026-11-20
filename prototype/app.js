@@ -81,6 +81,9 @@
     notifySystem: false,
     notifyRunning: null,
     notifySeen: {},
+    resumeBusy: false,
+    lastResumeAt: 0,
+    suppressCompletionUntil: 0,
     ownerMap: {},
     qSelected: {},
     mySessions: [],
@@ -507,7 +510,19 @@
 
   function registerNotificationWorker() {
     if (!("serviceWorker" in navigator) || !isLivePage()) return;
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z13", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      const data = event.data ?? {};
+      if (data.type === "dsh-push") {
+        state.suppressCompletionUntil = Date.now() + 8000;
+        return;
+      }
+      if (data.type !== "dsh-push-open") return;
+      state.suppressCompletionUntil = Date.now() + 8000;
+      state.lastResumeAt = 0;
+      if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
+      resumeLive();
+    });
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z16", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -641,6 +656,10 @@
   function checkRunningNotifications() {
     if (!state.live) return;
     const now = collectRunningIds();
+    if (Date.now() < (state.suppressCompletionUntil ?? 0)) {
+      state.notifyRunning = now;
+      return;
+    }
     if (state.notifyRunning !== null) {
       for (const id of state.notifyRunning) {
         if (now.has(id)) continue;
@@ -4240,6 +4259,37 @@
   }
 
   /* ---------------------------- 启动 ---------------------------- */
+
+  async function refreshAfterResume() {
+    if (!state.live || document.hidden || state.resumeBusy) return;
+    state.resumeBusy = true;
+    state.suppressCompletionUntil = Date.now() + 8000;
+    try {
+      await liveLoadState();
+      state.notifyRunning = collectRunningIds();
+      if (state.chatId) {
+        void loadDeliverables(state.chatId);
+        void loadTrace(state.chatId);
+      }
+      void loadPending();
+    } catch {} finally {
+      state.resumeBusy = false;
+    }
+  }
+
+  function resumeLive() {
+    if (document.hidden) return;
+    const now = Date.now();
+    if (now - state.lastResumeAt < 1200) return;
+    state.lastResumeAt = now;
+    state.suppressCompletionUntil = now + 8000;
+    void refreshAfterResume();
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) resumeLive();
+  });
+  window.addEventListener("focus", resumeLive);
 
   function init() {
     try {
