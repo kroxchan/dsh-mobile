@@ -1585,7 +1585,7 @@ async function checkPushCompletions() {
 
 function startPushWatcher() {
   if (pushTimer !== null) return;
-  pushTimer = setInterval(() => { void checkPushCompletions(); }, 3000);
+  pushTimer = setInterval(() => { void checkPushCompletions(); }, 8000);
   if (typeof pushTimer.unref === "function") pushTimer.unref();
 }
 
@@ -2672,8 +2672,35 @@ async function proxyHttp(req, res, attempt = 1) {
   req.on("aborted", () => upstreamReq.destroy());
 }
 
+const OAUTH_CODE_PATH = path.join(DIR, "oauth_code.txt");
+
+/** OAuth 回调落点：把 code 写到本地文件，方便本机脚本直接换 token。 */
+function handleOauthCallback(req, res, url) {
+  const code = url.searchParams.get("code") ?? "";
+  const state = url.searchParams.get("state") ?? "";
+  const error = url.searchParams.get("error") ?? "";
+  const payload = JSON.stringify({ at: new Date().toISOString(), code, state, error });
+  try {
+    fs.writeFileSync(OAUTH_CODE_PATH, payload, "utf8");
+  } catch {}
+  log(`oauth-callback code=${code ? code.slice(0, 10) + "…" : "-"} error=${error || "-"}`);
+  const html =
+    '<!doctype html><meta charset="utf-8"><title>授权完成</title>' +
+    '<body style="font-family:-apple-system,sans-serif;padding:32px;line-height:1.6">' +
+    '<h2 style="margin:0 0 12px">授权码已捕获</h2>' +
+    '<p style="color:#666;margin:0">可以关闭本页，回到对话继续。</p>' +
+    `<pre style="margin-top:16px;font-size:12px;color:#999">${code ? "code written" : "no code: " + (error || "unknown")}</pre>` +
+    "</body>";
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(html);
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
+  if (url.pathname === "/oauth/callback") {
+    handleOauthCallback(req, res, url);
+    return;
+  }
   if (url.pathname === "/_gate/logout") {
     res.writeHead(302, {
       location: "/",
