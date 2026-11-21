@@ -524,7 +524,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z23", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z24", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -2463,20 +2463,9 @@
   }
 
   function expandMentions(text, conv) {
-    if (!conv || conv.kind !== "group" || !text.includes("@")) return text;
-    const members = (conv.memberIds || [])
-      .map((id) => state.botMap[id])
-      .filter(Boolean)
-      .filter((member) => member.name)
-      .sort((a, b) => b.name.length - a.name.length);
-    let out = text;
-    for (const member of members) {
-      const sessionId = member.sessionId || member.id;
-      const label = String(member.name).replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
-      const canonical = "@[" + label + "](dsh-session:" + sessionId + ")";
-      out = out.split("@" + member.name).join(canonical);
-    }
-    return out;
+    // DS Bot 群聊的 inbox 只识别普通 @名字，并明确跳过包含 dsh-session:
+    // 的消息；这里不要转成桌面端的 canonical session mention。
+    return text;
   }
 
   function sendText(raw) {
