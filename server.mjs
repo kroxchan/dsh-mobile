@@ -20,6 +20,7 @@ import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { listMemory, addMemory, removeMemory, memoryStats } from "./memory-store.mjs";
+import { createSiriApi, loadSiriToken } from "./siri-api.mjs";
 import * as webpush from "web-push";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -40,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261118z24";
+const PROTO_VERSION = "20261118z25";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -2757,8 +2758,33 @@ function handleOauthCallback(req, res, url) {
   res.end(html);
 }
 
+/* ------------------------------------------------------------------------
+ * Siri / 快捷指令 API（/api/siri/*）：独立 token 鉴权，不走 krox_gate 口令门。
+ * 快捷指令没法舒服地带 cookie，也没有分页游标的耐心，所以这里是一问一答的阻塞接口。
+ * ---------------------------------------------------------------------- */
+const SIRI_TOKEN = loadSiriToken({ dir: DIR, config, log });
+const siriApi = createSiriApi({
+  botApi,
+  botStateCached,
+  parseTaskBoard,
+  jsonResponse,
+  readBody,
+  token: SIRI_TOKEN,
+  version: PROTO_VERSION,
+  defaultTarget: String(config.siriTarget ?? ""),
+  log,
+});
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
+  if (url.pathname === "/api/siri" || url.pathname.startsWith("/api/siri/")) {
+    void siriApi.handle(req, res, url).catch((error) => {
+      log(`[siri] 处理失败：${error?.message ?? error}`);
+      if (!res.headersSent) jsonResponse(res, 500, { ok: false, error: { message: "服务端异常" } });
+      else res.end();
+    });
+    return;
+  }
   if (url.pathname === "/oauth/callback") {
     handleOauthCallback(req, res, url);
     return;

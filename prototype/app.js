@@ -524,7 +524,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z24", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z25", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -3775,26 +3775,8 @@
       showToast("新建失败：DSH 没有返回会话 ID");
       return;
     }
-    state.agentSessionId = created.id;
-    try {
-      localStorage.setItem("kpao-agent-session", created.id);
-    } catch {}
-    // 会话已经创建成功；状态刷新失败不能反过来报“新建失败”
-    try {
-      await liveLoadState();
-    } catch {}
-    if (!convById(created.id)) {
-      state.convs.unshift({
-        id: created.id,
-        kind: "bot",
-        name: created.title || "新会话",
-        last: "新会话",
-        time: nowHM(),
-        unread: 0
-      });
-      renderChats();
-    }
-    location.hash = "#/chat/" + encodeURIComponent(created.id);
+    // 复用切换逻辑：同一个 Agent 行、同一个置顶 key、同一份历史栈。
+    await switchAgentSession(created.id, created.title || "新会话");
     showToast("已新建会话");
   }
 
@@ -3815,7 +3797,28 @@
     try {
       await liveLoadState();
     } catch {}
-    const agentConv = state.convs.find((conv) => conv.agentSession === true);
+    let agentConv = state.convs.find((conv) => conv.agentSession === true && conv.id === id);
+    if (!agentConv) agentConv = state.convs.find((conv) => conv.agentSession === true);
+    if (!agentConv) {
+      agentConv = {
+        id,
+        kind: "bot",
+        name: title || "DSH Agent",
+        last: "当前 DSH 会话 · 可直接对话",
+        time: "",
+        unread: 0,
+        lastAt: oldLastAt || Date.now(),
+        agentSession: true,
+      };
+      state.convs.unshift(agentConv);
+    }
+    // 只保留一个 Agent 行；也移除同 id 的普通兜底会话。
+    state.convs = state.convs.filter(
+      (conv) => conv.id !== id || conv.agentSession === true || conv === agentConv
+    );
+    state.convs = state.convs.filter(
+      (conv) => !conv.agentSession || conv === agentConv
+    );
     if (agentConv) {
       if (oldLastAt) {
         agentConv.lastAt = oldLastAt;
