@@ -40,7 +40,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261118z20";
+const PROTO_VERSION = "20261118z23";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1235,6 +1235,7 @@ function saveBotStateCache(result) {
         work: value.work,
         activity: value.activity,
         questions: value.questions,
+        secretRequests: value.secretRequests,
       },
     };
     fs.writeFileSync(BOT_STATE_CACHE_FILE, JSON.stringify(light));
@@ -1713,6 +1714,7 @@ async function serveIm(req, res, url) {
           reason,
           at,
         }));
+      const secrets = [];
       const questions = [...pendingQuestions.values()]
         .filter((item) => id === "" || item.sessionId === id)
         .map(({ eventId, sessionId, questions: list, at }) => ({
@@ -1723,6 +1725,22 @@ async function serveIm(req, res, url) {
         }));
       try {
         const stateResult = await botStateCached();
+        for (const [botId, list] of Object.entries(stateResult.value?.secretRequests ?? {})) {
+          for (const request of Array.isArray(list) ? list : []) {
+            if (request?.status !== "pending") continue;
+            const requestSession = String(request.sessionId || botId);
+            if (id !== "" && requestSession !== id && botId !== id) continue;
+            secrets.push({
+              eventId: String(request.id),
+              requestId: String(request.id),
+              sessionId: requestSession,
+              name: String(request.name || ""),
+              purpose: String(request.purpose || ""),
+              kind: request.kind === "allow" ? "allow" : "fill",
+              at: Number(request.askedAt) || 0,
+            });
+          }
+        }
         for (const [sessionId, question] of Object.entries(stateResult.value?.questions ?? {})) {
           if (question === null || typeof question !== "object") continue;
           if (id !== "" && sessionId !== id) continue;
@@ -1744,7 +1762,7 @@ async function serveIm(req, res, url) {
           });
         }
       } catch {}
-      jsonResponse(res, 200, { ok: true, approvals, questions });
+      jsonResponse(res, 200, { ok: true, approvals, questions, secrets });
       return;
     }
 
@@ -1833,6 +1851,50 @@ async function serveIm(req, res, url) {
       } catch (error) {
         jsonResponse(res, 400, { ok: false, error: { message: error.message } });
       }
+      return;
+    }
+
+    if (pathname === "/__im/secret-save" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req, 1024 * 1024)) || "{}");
+      const requestId = String(body.requestId ?? "");
+      const value = String(body.value ?? "").trim();
+      if (requestId === "" || value === "") {
+        jsonResponse(res, 400, { ok: false, error: { message: "缺少 requestId 或密钥为空" } });
+        return;
+      }
+      const result = await botApi("secret-set", {
+        requestId,
+        value,
+        scope: body.scope === "bot" ? "bot" : "all",
+      });
+      if (result.ok) await refreshBotStateNow();
+      jsonResponse(res, result.ok ? 200 : 400, result);
+      return;
+    }
+
+    if (pathname === "/__im/secret-allow" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const requestId = String(body.requestId ?? "");
+      if (requestId === "") {
+        jsonResponse(res, 400, { ok: false, error: { message: "缺少 requestId" } });
+        return;
+      }
+      const result = await botApi("secret-allow", { requestId });
+      if (result.ok) await refreshBotStateNow();
+      jsonResponse(res, result.ok ? 200 : 400, result);
+      return;
+    }
+
+    if (pathname === "/__im/secret-cancel" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const requestId = String(body.requestId ?? "");
+      if (requestId === "") {
+        jsonResponse(res, 400, { ok: false, error: { message: "缺少 requestId" } });
+        return;
+      }
+      const result = await botApi("secret-cancel", { requestId });
+      if (result.ok) await refreshBotStateNow();
+      jsonResponse(res, result.ok ? 200 : 400, result);
       return;
     }
 

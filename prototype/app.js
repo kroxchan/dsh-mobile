@@ -73,7 +73,7 @@
     liveWork: {},
     liveActivity: {},
     sessionWork: {},
-    pending: { approvals: [], questions: [] },
+    pending: { approvals: [], questions: [], secrets: [] },
     pendingRuns: {},
     deliverables: [],
     trace: [],
@@ -395,7 +395,7 @@
       })
     ].filter((conv) => !state.hidden.includes(conv.id));
     const pinnedPrevious = previousConvs.filter(
-      (conv) => isPinned(conv) && !state.convs.some((next) => next.id === conv.id)
+      (conv) => !conv.agentSession && isPinned(conv) && !state.convs.some((next) => next.id === conv.id)
     );
     if (pinnedPrevious.length > 0) state.convs = [...state.convs, ...pinnedPrevious];
     state.live = true;
@@ -446,7 +446,8 @@
     const owner = (item) => state.ownerMap[item.sessionId] || item.sessionId;
     return {
       approvals: (state.pending.approvals ?? []).filter((item) => owner(item) === id),
-      questions: (state.pending.questions ?? []).filter((item) => owner(item) === id)
+      questions: (state.pending.questions ?? []).filter((item) => owner(item) === id),
+      secrets: (state.pending.secrets ?? []).filter((item) => owner(item) === id)
     };
   }
 
@@ -523,7 +524,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z20", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z23", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -689,6 +690,12 @@
         convId
       );
     }
+    for (const item of state.pending.secrets ?? []) {
+      if (seen[item.eventId]) continue;
+      seen[item.eventId] = true;
+      const convId = state.ownerMap[item.sessionId] || item.sessionId;
+      showNotify(item.kind === "allow" ? "需要授权密钥" : "需要填写密钥", `${item.name || "密钥"}${item.purpose ? " · " + String(item.purpose).slice(0, 50) : ""}`, convId);
+    }
     for (const bundle of state.pending.questions ?? []) {
       if (seen[bundle.eventId]) continue;
       seen[bundle.eventId] = true;
@@ -714,7 +721,8 @@
       const closed = state.closedCards ?? {};
       state.pending = {
         approvals: (data.approvals ?? []).filter((item) => !closed[item.eventId]),
-        questions: (data.questions ?? []).filter((item) => !closed[item.eventId])
+        questions: (data.questions ?? []).filter((item) => !closed[item.eventId]),
+        secrets: (data.secrets ?? []).filter((item) => !closed[item.eventId])
       };
       renderCardDock();
       notifyPendingCards();
@@ -957,6 +965,7 @@
     state.closedCards[eventId] = true;
     state.pending.approvals = (state.pending.approvals ?? []).filter((item) => item.eventId !== eventId);
     state.pending.questions = (state.pending.questions ?? []).filter((item) => item.eventId !== eventId);
+    state.pending.secrets = (state.pending.secrets ?? []).filter((item) => item.eventId !== eventId);
     delete state.qSelected[eventId];
     state.cardKey = "";
     renderCardDock(true);
@@ -964,7 +973,7 @@
 
   let cardTouchUntil = 0;
 
-  function cardRenderKey(conv, approvals, questions) {
+  function cardRenderKey(conv, approvals, questions, secrets) {
     const selected = {};
     for (const bundle of questions) {
       selected[bundle.eventId] = [...(state.qSelected[bundle.eventId] ?? new Set())].sort();
@@ -973,7 +982,8 @@
       id: conv.id,
       approvals: approvals.map((item) => item.eventId).sort(),
       questions: questions.map((item) => item.eventId).sort(),
-      selected
+      selected,
+      secrets: secrets.map((item) => item.eventId).sort()
     });
   }
 
@@ -991,14 +1001,14 @@
       state.cardKey = "";
       return;
     }
-    const { approvals, questions } = pendingFor(conv.id);
-    if (approvals.length === 0 && questions.length === 0) {
+    const { approvals, questions, secrets } = pendingFor(conv.id);
+    if (approvals.length === 0 && questions.length === 0 && secrets.length === 0) {
       dock.hidden = true;
       dock.innerHTML = "";
       state.cardKey = "";
       return;
     }
-    const key = cardRenderKey(conv, approvals, questions);
+    const key = cardRenderKey(conv, approvals, questions, secrets);
     if (!force && key === state.cardKey && !dock.hidden) return;
     state.cardKey = key;
     dock.hidden = false;
@@ -1013,6 +1023,22 @@
           <button class="btn primary" data-approve-answer="allowed-once" data-event="${esc(item.eventId)}">允许一次</button>
         </div>
       </div>`);
+    }
+    for (const item of secrets) {
+      const isAllow = item.kind === "allow";
+      const requestId = String(item.eventId || item.requestId || "");
+      const title = isAllow ? "允许使用密钥" : "需要你填写密钥";
+      const scopeId = "secret_scope_" + requestId;
+      parts.push('<div class="interaction-card">' +
+        '<div class="interaction-head"><svg class="ic"><use href="#i-shield"/></svg><b>' + title + '</b></div>' +
+        '<div class="interaction-line">' + esc(item.name || "密钥") + '</div>' +
+        (item.purpose ? '<div class="interaction-reason">' + esc(item.purpose) + '</div>' : '') +
+        (isAllow
+          ? '<div class="interaction-actions"><button class="btn" data-secret-cancel="' + esc(requestId) + '">取消</button><button class="btn primary" data-secret-allow="' + esc(requestId) + '">允许</button></div>'
+          : '<input class="interaction-input" id="secret_' + esc(requestId) + '" type="password" autocomplete="new-password" placeholder="输入 ' + esc(item.name || "密钥") + '">' +
+            '<label class="sheet-sub" style="display:flex;gap:7px;align-items:center;margin-top:8px"><input type="checkbox" id="' + esc(scopeId) + '"> 允许所有 Bot 使用</label>' +
+            '<div class="interaction-actions"><button class="btn" data-secret-cancel="' + esc(requestId) + '">取消</button><button class="btn primary" data-secret-save="' + esc(requestId) + '">保存密钥</button></div>') +
+        '</div>');
     }
     for (const bundle of questions) {
       const selected = state.qSelected[bundle.eventId] ?? new Set();
@@ -1062,6 +1088,54 @@
       }
       showToast("操作失败：" + message);
     }
+  }
+
+  async function saveSecretRequest(requestId, value, scope) {
+    if (!requestId) return;
+    const clean = String(value ?? "").trim();
+    if (clean === "") {
+      showToast("请先输入密钥");
+      return;
+    }
+    try {
+      await liveFetch("/__im/secret-save", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestId, value: clean, scope: scope ? "all" : "bot" })
+      });
+      markCardClosed(requestId);
+      showToast("密钥已保存");
+    } catch (error) {
+      showToast("保存密钥失败：" + error.message);
+    }
+  }
+
+  async function allowSecretRequest(requestId) {
+    if (!requestId) return;
+    try {
+      await liveFetch("/__im/secret-allow", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestId })
+      });
+      markCardClosed(requestId);
+      showToast("已允许使用这个密钥");
+    } catch (error) {
+      showToast("授权失败：" + error.message);
+    }
+  }
+
+  async function cancelSecretRequest(requestId) {
+    if (!requestId) return;
+    try {
+      await liveFetch("/__im/secret-cancel", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestId })
+      });
+    } catch {}
+    markCardClosed(requestId);
+    showToast("已取消密钥请求");
   }
 
   async function submitQuestionAnswer(eventId, questionId, selected, custom, sessionId) {
@@ -1608,14 +1682,14 @@
   }
 
   function pinKey(conv) {
-    return conv ? conv.id : "";
+    return conv ? (conv.agentSession ? "__agent__" : conv.id) : "";
   }
 
   function isPinned(conv) {
     return !!conv && (
       conv.pin === true ||
       state.pins.includes(pinKey(conv)) ||
-      (conv.agentSession === true && state.pins.includes("__agent__"))
+      (conv.agentSession === true && (state.pins.includes("__agent__") || state.pins.includes(conv.id)))
     );
   }
 
@@ -1637,6 +1711,7 @@
   function togglePin(id) {
     const conv = convById(id);
     const key = conv ? pinKey(conv) : id;
+    if (conv && conv.agentSession) state.pins = state.pins.filter((item) => item !== conv.id);
     state.pins = state.pins.includes(key)
       ? state.pins.filter((item) => item !== key)
       : [...state.pins, key];
@@ -3048,6 +3123,27 @@
         return;
       }
 
+      const secretSave = event.target.closest("[data-secret-save]");
+      if (secretSave) {
+        const id = secretSave.dataset.secretSave;
+        const input = document.getElementById("secret_" + id);
+        const scope = document.getElementById("secret_scope_" + id);
+        void saveSecretRequest(id, input?.value ?? "", !!scope?.checked);
+        return;
+      }
+
+      const secretAllow = event.target.closest("[data-secret-allow]");
+      if (secretAllow) {
+        void allowSecretRequest(secretAllow.dataset.secretAllow);
+        return;
+      }
+
+      const secretCancel = event.target.closest("[data-secret-cancel]");
+      if (secretCancel) {
+        void cancelSecretRequest(secretCancel.dataset.secretCancel);
+        return;
+      }
+
       const questionOption = event.target.closest("[data-question-opt]");
       if (questionOption) {
         handleQuestionOption(questionOption);
@@ -3714,13 +3810,39 @@
   }
 
   async function switchAgentSession(id, title) {
+    const oldAgent = state.convs.find((conv) => conv.agentSession === true);
+    const oldLastAt = oldAgent?.lastAt ?? 0;
+    const wasPinned = oldAgent ? isPinned(oldAgent) : false;
+    if (wasPinned && !state.pins.includes("__agent__")) {
+      state.pins.push("__agent__");
+      try { localStorage.setItem("kpao-pins", JSON.stringify(state.pins)); } catch {}
+    }
     state.agentSessionId = id;
     try {
       localStorage.setItem("kpao-agent-session", id);
     } catch {}
+    closeSheet();
     showToast("正在切换会话…");
-    await liveLoadState();
-    location.hash = "#/chat/" + encodeURIComponent(id);
+    try {
+      await liveLoadState();
+    } catch {}
+    const agentConv = state.convs.find((conv) => conv.agentSession === true);
+    if (agentConv) {
+      if (oldLastAt) {
+        agentConv.lastAt = oldLastAt;
+        state.lastAt[id] = oldLastAt;
+        try { saveLastAt(); } catch {}
+      }
+      if (wasPinned) state.pins = [...new Set([...state.pins, "__agent__"])];
+      try { localStorage.setItem("kpao-pins", JSON.stringify(state.pins)); } catch {}
+    }
+    try {
+      history.replaceState(null, "", "#/chat/" + encodeURIComponent(id));
+    } catch {
+      location.hash = "#/chat/" + encodeURIComponent(id);
+    }
+    openChat(id);
+    renderChats();
     showToast(title || "已切换会话");
   }
 
@@ -3759,9 +3881,25 @@
     openSheet(`<h3>历史会话</h3><p class="sheet-sub">正在读取…</p>`);
     try {
       const listed = await liveFetch("/__im/sessions");
-      const items = (listed.items ?? []).filter(
+      const botSessionIds = new Set(
+        state.bots
+          .filter((bot) => !bot.agent)
+          .flatMap((bot) => [bot.id, bot.sessionId])
+          .filter(Boolean)
+      );
+      const current = currentConv();
+      let items = (listed.items ?? []).filter(
         (item) => !state.hidden.includes(item.id)
       );
+      // DSH Agent 的历史里只放 Agent 会话，避免选中私人助理等 Bot 会话后
+      // 被 switchAgentSession 当成 Agent 会话，主列表出现两个 Agent 入口。
+      if (current?.agentSession) {
+        items = items.filter((item) => !botSessionIds.has(item.id));
+      } else if (current?.kind === "group") {
+        items = items.filter((item) => !botSessionIds.has(item.id));
+      } else if (current?.kind === "bot" && !current.agentSession) {
+        items = items.filter((item) => item.id === current.id);
+      }
       if (items.length === 0) {
         openSheet(`<h3>历史会话</h3><p class="sheet-sub">还没有会话，先新建一个。</p>
           <div class="group-card"><button class="menu-row" data-act="new-session">
