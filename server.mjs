@@ -41,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261122o";
+const PROTO_VERSION = "20261122p";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -2114,14 +2114,38 @@ async function serveIm(req, res, url) {
 
     if (pathname === "/__im/sessions" && req.method === "GET") {
       const result = await dshRpc("session/list", { _request: {} });
-      const items = listOf(result.result?.value?.items).map((session) => ({
-        id: session.sessionId,
-        title: session.projections?.values?.title ?? "",
-        updatedAt: session.updatedAt ?? 0,
-        running: session.running === true,
-        blank: session.blank === true,
-        cwd: session.cwd ?? "",
-      }));
+      const botState = readBotState();
+      const sessionBots = listOf(botState?.bots);
+      const sessionRooms = listOf(botState?.rooms);
+      const sessionAgents = listOf(botState?.agents);
+      const normalizeTitle = (value) => String(value ?? "").trim();
+      const items = listOf(result.result?.value?.items).map((session) => {
+        const id = session.sessionId;
+        const title = session.projections?.values?.title ?? "";
+        const norm = normalizeTitle(title);
+        const bot = sessionBots.find((entry) => entry.id === id || entry.sessionId === id);
+        const room = sessionRooms.find((entry) => entry.id === id || entry.sessionId === id);
+        const agent = sessionAgents.find((entry) => Array.isArray(entry.sessions) && entry.sessions.includes(id));
+        const titleBot = sessionBots.find((entry) => {
+          const name = normalizeTitle(entry.name);
+          return name !== "" && (norm === name || norm.startsWith(name + " ") || norm.startsWith(name + " · ") || (name.length >= 5 && norm.startsWith(name.slice(0, 8))));
+        });
+        const titleRoom = sessionRooms.find((entry) => {
+          const name = normalizeTitle(entry.name);
+          return name !== "" && (norm === name || norm.startsWith(name + " · ") || norm.startsWith(name + " "));
+        });
+        const owner = bot || titleBot ? "bot" : room || titleRoom ? "room" : agent ? "agent" : "agent";
+        return {
+          id,
+          title,
+          updatedAt: session.updatedAt ?? 0,
+          running: session.running === true,
+          blank: session.blank === true,
+          cwd: session.cwd ?? "",
+          owner,
+          ownerName: (bot || titleBot || room || titleRoom)?.name ?? (agent?.name ?? ""),
+        };
+      });
       jsonResponse(res, 200, { ok: true, items });
       return;
     }

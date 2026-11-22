@@ -595,7 +595,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261122o", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122p", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -4012,6 +4012,13 @@
   }
 
   async function switchAgentSession(id, title) {
+    const owner = botOwnerForSession(id, title);
+    if (owner) {
+      closeSheet();
+      openChat(owner.id);
+      showToast("已打开 " + owner.name + " 的会话");
+      return;
+    }
     const oldAgent = state.convs.find((conv) => conv.agentSession === true);
     const oldLastAt = oldAgent?.lastAt ?? 0;
     const wasPinned = oldAgent ? isPinned(oldAgent) : false;
@@ -4100,6 +4107,26 @@
       </div>`);
   }
 
+  function botOwnerForSession(id, title) {
+    const t = String(title || "").trim();
+    return state.bots.find((bot) => {
+      if (bot.agent) return false;
+      if (bot.id === id || bot.sessionId === id) return true;
+      const name = String(bot.name || "").trim();
+      const key = name.slice(0, Math.min(8, name.length));
+      return name !== "" && (t === name || t.startsWith(name + " · ") || t.startsWith(name + " ") || (key.length >= 5 && t.startsWith(key)));
+    }) || null;
+  }
+
+  function isBotOwnedSession(item) {
+    if (botOwnerForSession(item.id, item.title)) return true;
+    const t = String(item.title || "").trim();
+    return state.convs.some((conv) => {
+      if (conv.kind !== "group") return false;
+      const name = String(conv.name || "").trim();
+      return name !== "" && (t === name || t.startsWith(name + " · "));
+    });
+  }
   async function openSessionsSheet() {
     openSheet(`<h3>历史会话</h3><p class="sheet-sub">正在读取…</p>`);
     try {
@@ -4116,10 +4143,11 @@
       );
       // DSH Agent 的历史里只放 Agent 会话，避免选中私人助理等 Bot 会话后
       // 被 switchAgentSession 当成 Agent 会话，主列表出现两个 Agent 入口。
-      if (current?.agentSession) {
-        items = items.filter((item) => !botSessionIds.has(item.id));
+      const ownerOf = (item) => item.owner || (botSessionIds.has(item.id) || isBotOwnedSession(item) ? "bot" : "agent");
+      if (current?.agentSession || !current) {
+        items = items.filter((item) => ownerOf(item) === "agent");
       } else if (current?.kind === "group") {
-        items = items.filter((item) => !botSessionIds.has(item.id));
+        items = items.filter((item) => ownerOf(item) === "room");
       } else if (current?.kind === "bot" && !current.agentSession) {
         items = items.filter((item) => item.id === current.id);
       }
