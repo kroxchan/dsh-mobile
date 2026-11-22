@@ -41,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261122i";
+const PROTO_VERSION = "20261122k";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1791,6 +1791,12 @@ async function serveIm(req, res, url) {
       }
       const value = result.value ?? {};
       const sessionWork = {};
+      for (const agent of listOf(value.agents)) {
+        for (const sessionId of Array.isArray(agent.sessions) ? agent.sessions : []) {
+          const status = sessionLiveStatus(sessionId);
+          if (status) sessionWork[sessionId] = status;
+        }
+      }
       jsonResponse(res, 200, {
         ok: true,
         revision: value.revision,

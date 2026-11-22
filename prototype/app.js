@@ -360,17 +360,38 @@
     buildOwnerMap(snapshot);
     const workBots = snapshot.work?.bots ?? {};
     const activity = snapshot.activity ?? {};
+    const runningSessionIds = new Set([
+      ...Object.keys(snapshot.work?.turns ?? {}),
+      ...Object.keys(snapshot.work?.bots ?? {}),
+      ...Object.keys(snapshot.work?.rooms ?? {}),
+      ...Object.keys(snapshot.sessionWork ?? {}),
+      ...Object.keys(snapshot.activity ?? {}),
+    ]);
     const agentBots = (snapshot.agents ?? []).map((agent) => {
       const sessions = Array.isArray(agent.sessions) ? agent.sessions : [];
+      // 手机端只保留一个 DSH Agent 行；优先跟着正在跑的 session 走，
+      // 这样从桌面/其他端口发起的任务也能在这里看到实时对话和执行状态。
+      const running = sessions.filter((id) => runningSessionIds.has(id));
+      const chosen = running.length > 0
+        ? running[running.length - 1]
+        : (sessions.includes(state.agentSessionId) ? state.agentSessionId : sessions[sessions.length - 1]);
+      if (chosen && chosen !== state.agentSessionId) {
+        state.agentSessionId = chosen;
+        try { localStorage.setItem("kpao-agent-session", chosen); } catch {}
+      }
+      const sessionRunning = !!running.length || !!state.sessionWork?.[chosen];
       return {
-        id: sessions.length > 0 ? sessions[sessions.length - 1] : agent.id,
+        id: chosen || agent.id,
+        sessionRunning,
+        runningCount: running.length,
+        _sessions: sessions,
         name: agent.name || "DSH Agent",
         glyph: "D",
         dept: "lead",
         role: "DSH Agent · 桌面端会话",
         short: "桌面端主助手",
-        status: "online",
-        statusText: "在线",
+        status: sessionRunning ? "busy" : "online",
+        statusText: sessionRunning ? "执行中" : "在线",
         agent: true
       };
     });
@@ -389,7 +410,7 @@
         id: state.agentSessionId || agent.sessions?.[0] || agent.id,
         kind: "bot",
         name: agent.name || "DSH Agent",
-        last: "当前 DSH 会话 · 可直接对话",
+        last: agent.sessionRunning ? `执行中${agent.runningCount > 1 ? ` · ${agent.runningCount} 个会话` : ""}` : "当前 DSH 会话 · 可直接对话",
         time: "",
         unread: 0,
         lastAt: Number(state.lastAt[state.agentSessionId || agent.sessions?.[0] || agent.id]) || 0,
@@ -537,7 +558,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261122i", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122k", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
