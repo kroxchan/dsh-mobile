@@ -2307,6 +2307,22 @@ async function serveIm(req, res, url) {
       return;
     }
 
+    if (pathname === "/__im/update-bot" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req, 1024 * 1024)) || "{}");
+      const result = await botApi("update-bot", body);
+      if (result.ok) await refreshBotStateNow();
+      jsonResponse(res, result.ok ? 200 : 400, result);
+      return;
+    }
+
+    if (pathname === "/__im/bot-capability" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req, 1024 * 1024)) || "{}");
+      const result = await botApi("bot-capability", body);
+      if (result.ok) await refreshBotStateNow();
+      jsonResponse(res, result.ok ? 200 : 400, result);
+      return;
+    }
+
     if (pathname === "/__im/send" && req.method === "POST") {
       const body = JSON.parse((await readBody(req, 4 * 1024 * 1024)) || "{}");
       const id = String(body.id ?? "");
