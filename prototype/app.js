@@ -537,7 +537,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261122h", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122i", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -1291,6 +1291,7 @@
       time: hm(item.time),
       rawTime: item.time ?? 0,
       image: item.image ?? null,
+      path: item.path ?? null,
       file:
         item.kind === "file"
           ? {
@@ -1302,8 +1303,10 @@
       type:
         item.kind === "event"
           ? "system"
-          : item.kind === "file"
-            ? "file"
+          : item.type === "image" || item.kind === "image"
+            ? "image"
+            : item.kind === "file"
+              ? "file"
             : item.kind === "thinking"
               ? "thinking"
               : item.kind === "tool"

@@ -41,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261122h";
+const PROTO_VERSION = "20261122i";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1055,6 +1055,21 @@ function dshSessionMessages(sessionId, maxBytes = 768 * 1024) {
         .trim();
       if (body === "" || isSystemInjected(body)) continue;
       items.push({ id: "s" + event.seq, kind: "me", sender: "Owner", text: body.replace(/^(?:You|User):\s*/u, ""), time: event.time ?? null, seq: event.seq });
+      content.forEach((block, index) => {
+        const a = block?.type === "image" ? block.attachment : null;
+        if (!a?.attachmentId) return;
+        items.push({
+          id: "s" + event.seq + "-img-" + index,
+          kind: "image",
+          type: "image",
+          path: "/__im/attachment?id=" + encodeURIComponent(a.attachmentId),
+          attachmentId: a.attachmentId,
+          text: "",
+          sender: "Owner",
+          time: event.time ?? null,
+          seq: event.seq,
+        });
+      });
     } else if (event.type === "assistant/message") {
       const message = event.data?.message ?? {};
       const content = Array.isArray(message.content) ? message.content : [];
@@ -1082,6 +1097,21 @@ function dshSessionMessages(sessionId, maxBytes = 768 * 1024) {
       if (body !== "") {
         items.push({ id: "s" + event.seq, kind: "bot", sender: "DSH Agent", text: body, time: event.time ?? null, seq: event.seq });
       }
+      content.forEach((block, index) => {
+        const a = block?.type === "image" ? block.attachment : null;
+        if (!a?.attachmentId) return;
+        items.push({
+          id: "s" + event.seq + "-img-" + index,
+          kind: "image",
+          type: "image",
+          path: "/__im/attachment?id=" + encodeURIComponent(a.attachmentId),
+          attachmentId: a.attachmentId,
+          text: "",
+          sender: "DSH Agent",
+          time: event.time ?? null,
+          seq: event.seq,
+        });
+      });
     } else if (event.type === "tool/call") {
       const value = event.data ?? {};
       const callId = String(value.callId ?? "");
@@ -1124,6 +1154,24 @@ function dshSessionMessages(sessionId, maxBytes = 768 * 1024) {
           isError,
           time: event.time ?? null,
           seq: event.seq,
+        });
+      }
+      const toolContent = value.message?.content ?? value.content ?? [];
+      if (Array.isArray(toolContent)) {
+        toolContent.forEach((block, index) => {
+          const a = block?.type === "image" ? block.attachment : null;
+          if (!a?.attachmentId) return;
+          items.push({
+            id: "s" + event.seq + "-img-" + index,
+            kind: "image",
+            type: "image",
+            path: "/__im/attachment?id=" + encodeURIComponent(a.attachmentId),
+            attachmentId: a.attachmentId,
+            text: "",
+            sender: "DSH Agent",
+            time: event.time ?? null,
+            seq: event.seq,
+          });
         });
       }
     } else if (event.type === "deliverables/presented") {
@@ -2174,6 +2222,20 @@ async function serveIm(req, res, url) {
         jsonResponse(res, 200, { ok: true, id, kind: "room", ...paged });
         return;
       }
+      const agentSessionIds = new Set(
+        listOf(fileState?.agents).flatMap((agent) => (Array.isArray(agent.sessions) ? agent.sessions : []))
+      );
+      if (agentSessionIds.has(id)) {
+        const paged = pageBySeq(annotateImages(dshSessionMessages(id)), before, limit);
+        jsonResponse(res, 200, {
+          ok: true,
+          id,
+          kind: "agent",
+          sessionStatus: sessionLiveStatus(id),
+          ...paged,
+        });
+        return;
+      }
       let cursorObject;
       if (rawCursor !== "") {
         try {
@@ -2395,6 +2457,39 @@ async function serveIm(req, res, url) {
       const room = listOf(stateResult.value?.rooms).find((item) => item.id === id);
       const sessionId = bot?.sessionId ?? room?.sessionId ?? id;
       jsonResponse(res, 200, { ok: true, items: deliverablesFromSession(sessionId) });
+      return;
+    }
+
+    if (pathname === "/__im/attachment" && req.method === "GET") {
+      const attachmentId = String(url.searchParams.get("id") ?? "");
+      const hex = attachmentId.replace(/^sha256:/, "");
+      if (!/^[a-f0-9]{64}$/i.test(hex)) {
+        jsonResponse(res, 400, { ok: false, error: { message: "附件 id 非法" } });
+        return;
+      }
+      const objectFile = path.join(DSH_HOME, "attachments", "v1", "objects", hex.slice(0, 2), hex);
+      try {
+        const stat = fs.statSync(objectFile);
+        if (!stat.isFile()) throw new Error("not file");
+        const header = fs.readFileSync(objectFile, { encoding: null, flag: "r" }).subarray(0, 12);
+        const contentType = header.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))
+          ? "image/png"
+          : header[0] === 0xff && header[1] === 0xd8
+            ? "image/jpeg"
+            : header.subarray(0, 6).toString("ascii") === "GIF87a" || header.subarray(0, 6).toString("ascii") === "GIF89a"
+              ? "image/gif"
+              : header.subarray(0, 4).toString("ascii") === "RIFF"
+                ? "image/webp"
+                : "application/octet-stream";
+        res.writeHead(200, {
+          "content-type": contentType,
+          "content-length": String(stat.size),
+          "cache-control": "private, max-age=3600",
+        });
+        fs.createReadStream(objectFile).pipe(res);
+      } catch {
+        jsonResponse(res, 404, { ok: false, error: { message: "附件不存在" } });
+      }
       return;
     }
 
