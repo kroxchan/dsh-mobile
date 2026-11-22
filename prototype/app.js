@@ -349,10 +349,46 @@
     }
   }
 
+  const SHELL_STATE_KEY = "kpao-shell-state-v1";
+
+  function saveShellState() {
+    try {
+      localStorage.setItem(SHELL_STATE_KEY, JSON.stringify({
+        at: Date.now(),
+        bots: state.bots,
+        convs: state.convs,
+        liveState: state.liveState,
+        lastAt: state.lastAt,
+        agentSessionId: state.agentSessionId
+      }));
+    } catch {}
+  }
+
+  function restoreShellState() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(SHELL_STATE_KEY) || "null");
+      if (!cached || !Array.isArray(cached.convs) || !Array.isArray(cached.bots)) return false;
+      state.bots = cached.bots;
+      state.convs = cached.convs;
+      state.liveState = cached.liveState ?? null;
+      state.liveWork = state.liveState?.work ?? {};
+      state.liveActivity = state.liveState?.activity ?? {};
+      state.lastAt = cached.lastAt ?? state.lastAt;
+      state.agentSessionId = cached.agentSessionId ?? state.agentSessionId;
+      rebuildBotMap();
+      state.live = true;
+      state.offline = true;
+      renderChats();
+      renderContacts();
+      setDataSource("本地缓存 · " + hm(cached.at || Date.now()));
+      return true;
+    } catch { return false; }
+  }
   async function liveLoadStateOnce() {
     const snapshot = await liveFetch("/__im/state");
     window.__kpaoHeartbeat?.();
     setDataSource("真实数据 · " + hm(Date.now()));
+    state.offline = false;
     state.liveState = snapshot;
     state.liveWork = snapshot.work ?? {};
     state.liveActivity = snapshot.activity ?? {};
@@ -454,6 +490,7 @@
     renderChats();
     renderContacts();
     refreshMyStats();
+    saveShellState();
     return snapshot;
   }
 
@@ -558,7 +595,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261122m", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122o", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -4787,6 +4824,9 @@
 
     // 通过网关访问时接真实数据；本地文件打开则保留演示数据
     if (isLivePage()) {
+      // 先用上一次成功同步的本地快照把界面点亮，再在后台换成实时数据；
+      // 网络/网关慢时不会先给用户一个空白页。
+      restoreShellState();
       setDataSource("连接中…");
       liveLoadState()
         .then(() => {
@@ -4800,7 +4840,8 @@
           liveFetch("/__im/account").then(updateBalanceShort).catch(() => {});
         })
         .catch(() => {
-          setDataSource("演示模式 · 真实数据连接失败");
+          if (!restoreShellState()) setDataSource("演示模式 · 真实数据连接失败");
+          route();
         });
     }
 
