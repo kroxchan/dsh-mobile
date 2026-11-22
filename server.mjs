@@ -41,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261122p";
+const PROTO_VERSION = "20261122q";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -95,8 +95,9 @@ function readBridgeCookie(port) {
 const mintedCache = new Map(); // authority -> header
 
 /** 用 $DSH_HOME/.credentials.yaml 里的签名密钥，为某个回环 authority 生成 DSH cookie。 */
-function mintCookieFor(authority) {
-  const cached = mintedCache.get(authority);
+function mintCookieFor(authority, nameAuthority = authority) {
+  const cacheKey = authority + "|" + nameAuthority;
+  const cached = mintedCache.get(cacheKey);
   if (cached !== undefined) return cached;
   const secretB64 = readStoredSecretB64();
   if (secretB64 === null) return null;
@@ -107,13 +108,13 @@ function mintCookieFor(authority) {
     return null;
   }
   if (key.byteLength !== 32) return null;
-  const name = "dsh-auth-" + crypto.createHash("sha256").update(authority).digest("base64url");
+  const name = "dsh-auth-" + crypto.createHash("sha256").update(nameAuthority).digest("base64url");
   const now = Date.now();
   const payload = { version: 1, authority, issuedAt: now, expiresAt: now + DSH_COOKIE_DAYS * 86400000 };
   const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const sig = crypto.createHmac("sha256", key).update(body).digest("base64url");
   const header = `${name}=v1.${body}.${sig}`;
-  mintedCache.set(authority, header);
+  mintedCache.set(cacheKey, header);
   return header;
 }
 
@@ -138,10 +139,18 @@ function loopbackListeningPorts() {
   return [...ports];
 }
 
+function cookieCandidates(port) {
+  // bridge cookie 已经是当前 DSH host 认可的值；不要和重新签发的同名 cookie 拼在一起。
+  const bridge = readBridgeCookie(port);
+  if (bridge !== null) return bridge;
+  const authority = `${UPSTREAM_HOST}:${port}`;
+  return mintCookieFor(authority) ?? "";
+}
+
 function probePort(port) {
   return new Promise((resolve) => {
     const authority = `${UPSTREAM_HOST}:${port}`;
-    const cookie = readBridgeCookie(port) ?? mintCookieFor(authority);
+    const cookie = cookieCandidates(port);
     if (cookie === null) {
       resolve(null);
       return;
@@ -153,7 +162,7 @@ function probePort(port) {
         path: "/",
         method: "GET",
         headers: { host: authority, cookie, "user-agent": "dsh-mobile-gateway", "accept-encoding": "identity" },
-        timeout: 2500,
+        timeout: 6000,
       },
       (res) => {
         let body = "";
@@ -175,9 +184,19 @@ function probePort(port) {
   });
 }
 
+function bridgeUpstreamPort() {
+  try {
+    const text = fs.readFileSync(path.join(BRIDGE_DIR, ".dsh-upstream"), "utf8");
+    const match = text.match(/:([0-9]{2,5})\b/);
+    if (match) return Number(match[1]);
+  } catch {}
+  return null;
+}
+
 async function resolveUpstream() {
-  const candidates = [HINT_PORT, ...loopbackListeningPorts()].filter((port, index, list) => Number.isInteger(port) && list.indexOf(port) === index);
-  const results = await Promise.all(candidates.slice(0, 40).map((port) => probePort(port)));
+  const known = bridgeUpstreamPort();
+  const candidates = [known, HINT_PORT, ...loopbackListeningPorts()].filter((port, index, list) => Number.isInteger(port) && port > 0 && list.indexOf(port) === index);
+  const results = await Promise.all(candidates.map((port) => probePort(port)));
   const found = results.find((item) => item !== null);
   if (found === undefined) {
     log("未找到 DSH 上游（桌面端没在运行？）");
@@ -185,7 +204,9 @@ async function resolveUpstream() {
     return upstream;
   }
   if (found.port !== upstream.port) log(`上游 = ${UPSTREAM_HOST}:${found.port}`);
-  upstream = { port: found.port, cookie: found.cookie, at: Date.now() };
+  // bridge 写出的 cookie 与 DSH 当前 host 实际使用的 authority 一致；
+  // 重新签发只作为后备，不能覆盖它。
+  upstream = { port: found.port, cookie: readBridgeCookie(found.port) ?? found.cookie, at: Date.now() };
   return upstream;
 }
 
@@ -200,11 +221,9 @@ async function ensureUpstream() {
 }
 
 function upstreamCookie() {
-  if (upstream.cookie !== null) return upstream.cookie;
-  const authority = `${UPSTREAM_HOST}:${upstream.port}`;
-  const minted = mintCookieFor(authority);
-  if (minted !== null) return minted;
-  return readBridgeCookie(upstream.port);
+  const candidates = cookieCandidates(upstream.port);
+  if (candidates !== "") return candidates;
+  return upstream.cookie;
 }
 
 /* ---------------------- DSH 远程事件：审批 / 选择题 ---------------------- */
