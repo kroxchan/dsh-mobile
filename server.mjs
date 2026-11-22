@@ -41,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261122q";
+const PROTO_VERSION = "20261122r";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1106,7 +1106,7 @@ function dshSessionMessages(sessionId, maxBytes = 768 * 1024) {
         items.push({
           id: "s" + event.seq + "-think",
           kind: "thinking",
-          text: thinking.slice(0, 5000),
+          text: thinking.slice(0, 20000),
           time: event.time ?? null,
           seq: event.seq,
           turn: event.data?.turn ?? null,
@@ -2468,8 +2468,8 @@ async function serveIm(req, res, url) {
       }
       const limitRaw = url.searchParams.get("limit");
       const limit = limitRaw === null || limitRaw.trim() === ""
-        ? 60
-        : Math.min(120, Math.max(10, Number(limitRaw) || 60));
+        ? 200
+        : Math.min(400, Math.max(10, Number(limitRaw) || 200));
       const stateResult = await botStateCached(8000);
       const bots = listOf(stateResult.value?.bots);
       const bot = bots.find((item) => item.id === id);

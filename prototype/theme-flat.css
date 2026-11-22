@@ -1612,6 +1612,7 @@ body {
   font-size: 11px;
   line-height: 1.55;
 }
+.trace-think .trace-body pre, .trace-live-card .trace-body pre { max-height: none; }
 .trace.is-err summary, .trace.is-err .trace-k { color: var(--danger); }
 .trace.is-err { border-color: color-mix(in srgb, var(--danger) 35%, var(--hair)); }
 

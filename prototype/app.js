@@ -595,7 +595,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261122q", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122r", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -811,7 +811,7 @@
       return;
     }
     try {
-      const data = await liveFetch("/__im/trace?id=" + encodeURIComponent(id));
+      const data = await liveFetch("/__im/trace?id=" + encodeURIComponent(id) + "&limit=200");
       if (state.chatId !== id || state.traceToken !== token) return;
       state.trace = data.items ?? [];
       renderTraceBar();
