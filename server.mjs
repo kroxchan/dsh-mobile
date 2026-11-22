@@ -41,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261122g";
+const PROTO_VERSION = "20261122h";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1683,7 +1683,13 @@ function appendTaskBoardCompletion({ name, sessionId, preview }) {
   }
 }
 
+let pushChecking = false;
+const pushNotifiedAt = new Map();
+
 async function checkPushCompletions() {
+  if (pushChecking) return;
+  pushChecking = true;
+  try {
   // 没有 push 订阅也要跑：任务板记录不依赖通知通道
   await refreshBotStateNow();
     const result = await botStateCached(1000);
@@ -1699,6 +1705,9 @@ async function checkPushCompletions() {
         await new Promise((resolve) => setTimeout(resolve, 500));
         preview = pushCompletionPreview(sessionIds.get(id) || id);
       }
+      const doneAt = Number(pushNotifiedAt.get(id) ?? 0);
+      if (Date.now() - doneAt < 300_000) continue;
+      pushNotifiedAt.set(id, Date.now());
       log(`push completion ${name} ${id}`);
       // Siri 的一问一答不是「任务」，不往任务板里塞
       if (siriBotName !== "" && name === siriBotName) continue;
@@ -1708,6 +1717,9 @@ async function checkPushCompletions() {
     }
   }
   pushRunning = running;
+  } finally {
+    pushChecking = false;
+  }
 }
 
 function startPushWatcher() {

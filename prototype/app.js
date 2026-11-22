@@ -537,7 +537,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261122g", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122h", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -680,6 +680,9 @@
         if (state.pushSeen?.[id] && Date.now() - state.pushSeen[id] < 10 * 60 * 1000) continue;
         const conv = convById(id);
         if (!conv) continue;
+        state.notifyDoneAt = state.notifyDoneAt ?? {};
+        if (Date.now() - Number(state.notifyDoneAt[id] ?? 0) < 60_000) continue;
+        state.notifyDoneAt[id] = Date.now();
         const messages = state.messages[id] ?? [];
         const last = messages.filter((m) => m.type === "text" || m.type === "file").at(-1);
         const preview = last
@@ -2604,8 +2607,9 @@
       updateLiveStatus();
       liveSend(chatId, outboundText).catch((error) => {
         delete state.pendingRuns[chatId];
-        // 没发出去就别把它留在气泡里冒充已发送
-        state.messages[chatId] = (state.messages[chatId] ?? []).filter((msg) => msg.id !== localId);
+        // 发送失败也保留气泡，标成失败状态，避免消息“凭空消失”。
+        const failed = (state.messages[chatId] ?? []).find((msg) => msg.id === localId);
+        if (failed) failed.failed = true;
         renderMessages();
         updateLiveStatus();
         showToast("发送失败：" + error.message);
