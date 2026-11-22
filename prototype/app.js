@@ -558,7 +558,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261122k", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122l", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -2753,7 +2753,7 @@
       <p class="sheet-sub">原型演示：只加到通讯录，不会真的创建 Bot。</p>
       <label class="field">
         <span>名称</span>
-        <input id="newBotName" maxlength="12" placeholder="例如：数据分析师">
+        <input id="newBotName" maxlength="40" placeholder="例如：数据分析师">
       </label>
       <label class="field">
         <span>岗位 / 一句话职责</span>
@@ -2832,24 +2832,71 @@
     const target = bot(id);
     openSheet(`<h3>${esc(target.name)}</h3>
       <p class="sheet-sub">${esc(target.role)} · ${esc(D.DEPTS[target.dept].name)}</p>
-      <div class="member-list">
-        <div class="member-row">
-          ${botAvatar(target, "avatar-sm")}
-          <span class="member-name">${esc(target.name)}</span>
-          <span class="member-role">${esc(target.statusText)}</span>
+      <div class="bot-profile-card">
+        <div class="member-list">
+          <div class="member-row">
+            ${botAvatar(target, "avatar-sm")}
+            <span class="member-name">${esc(target.name)}</span>
+            <span class="member-role">${esc(target.statusText)}</span>
+          </div>
+        </div>
+        <div class="bot-profile-actions${target.agent ? " single" : ""}">
+          ${target.agent ? "" : `<button class="btn" data-rename-bot="${target.id}">改名字</button>`}
+          <button class="btn primary" data-open="${target.id}">发消息</button>
         </div>
       </div>
-      <div class="sheet-footer">
-        <button class="btn primary" data-open="${target.id}">发消息</button>
-      </div>
+      <div style="height:10px"></div>
       ${
         target.agent
           ? ""
-          : `<div style="height:10px"></div>
-      <button class="btn" data-delete-bot="${target.id}" style="width:100%;padding:12px;color:var(--danger)">删除 agent</button>`
+          : `<button class="btn" data-delete-bot="${target.id}" style="width:100%;padding:12px;color:var(--danger)">删除 agent</button>`
       }`);
   }
 
+  function openBotRenameSheet(id) {
+    const target = bot(id);
+    openSheet(`<h3>改名字</h3>
+      <p class="sheet-sub">名字最多 40 个字符；改完后会话、群聊 @ 和飞书入口都会用新名字。</p>
+      <div class="input-wrap"><input id="botRenameInput" maxlength="40" value="${esc(target.name)}" placeholder="输入 Bot 名字"></div>
+      <div class="sheet-footer">
+        <button class="btn" data-act="sheet-close">取消</button>
+        <button class="btn primary" data-save-bot-rename="${esc(id)}">保存</button>
+      </div>`);
+    setTimeout(() => {
+      const input = $("#botRenameInput");
+      input?.focus();
+      input?.select();
+    }, 120);
+  }
+
+  async function saveBotRename(id) {
+    const input = $("#botRenameInput");
+    const name = String(input?.value ?? "").trim();
+    if (name === "") { showToast("名字不能为空"); return; }
+    if (name.length > 40) { showToast("名字最多 40 个字符"); return; }
+    try {
+      if (state.live) {
+        await liveFetch("/__im/update-bot", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id, name })
+        });
+        await liveLoadState();
+      } else {
+        const target = state.botMap[id];
+        if (target) target.name = name;
+        const conv = convById(id);
+        if (conv) conv.name = name;
+        rebuildBotMap();
+        renderContacts();
+        renderChats();
+      }
+      closeSheet();
+      showToast("名字已更新");
+    } catch (error) {
+      showToast("改名失败：" + error.message);
+    }
+  }
   function openDeleteBotSheet(id) {
     const target = state.botMap[id];
     const name = target ? target.name : "这个 agent";
@@ -3214,6 +3261,10 @@
         return;
       }
 
+      const renameBotHit = event.target.closest("[data-rename-bot]");
+      if (renameBotHit) { openBotRenameSheet(renameBotHit.dataset.renameBot); return; }
+      const saveBotRenameHit = event.target.closest("[data-save-bot-rename]");
+      if (saveBotRenameHit) { void saveBotRename(saveBotRenameHit.dataset.saveBotRename); return; }
       const deleteBotHit = event.target.closest("[data-delete-bot]");
       if (deleteBotHit) {
         openDeleteBotSheet(deleteBotHit.dataset.deleteBot);

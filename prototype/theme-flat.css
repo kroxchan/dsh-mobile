@@ -1757,3 +1757,13 @@ button, a, .tool-tile, .menu-row, .chat-row, .icon-btn, .tab, .quick-chip {
 .memory-meta { margin-top: 5px; font-size: 11px; color: var(--text-3); }
 .memory-actions { margin-top: 6px; text-align: right; }
 .memory-actions .btn { padding: 4px 8px; font-size: 11px; }
+
+/* Bot 资料：长名字与操作区比例 */
+.sheet h3 { overflow-wrap: anywhere; }
+.bot-profile-card .member-list { border-top: 0.5px solid var(--hair); border-bottom: 0.5px solid var(--hair); }
+.bot-profile-card .member-row { align-items: flex-start; gap: 12px; padding: 13px 2px; }
+.bot-profile-card .member-name { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 16px; line-height: 1.35; }
+.bot-profile-card .member-role { flex: 0 1 42%; margin-left: auto; white-space: normal; overflow-wrap: anywhere; text-align: right; line-height: 1.35; }
+.bot-profile-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.bot-profile-actions.single { grid-template-columns: 1fr; }
+.bot-profile-actions .btn { width: 100%; padding: 11px 8px; }
