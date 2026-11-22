@@ -28,6 +28,7 @@
     chatStatus: $("#chatStatus"),
     chatScroll: $("#chatScroll"),
     imageInput: $("#imageInput"),
+  fileInput: $("#fileInput"),
     pendingImage: $("#pendingImage"),
     pendingImageThumb: $("#pendingImageThumb"),
     quickRow: $("#quickRow"),
@@ -61,6 +62,7 @@
     memberSelection: new Set(),
     pins: [],
     pendingImage: null,
+    pendingFile: null,
     lastAt: {},
     live: false,
     liveState: null,
@@ -337,6 +339,17 @@
   }
 
   async function liveLoadState() {
+    if (state.stateLoadPromise) return state.stateLoadPromise;
+    const promise = liveLoadStateOnce();
+    state.stateLoadPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (state.stateLoadPromise === promise) state.stateLoadPromise = null;
+    }
+  }
+
+  async function liveLoadStateOnce() {
     const snapshot = await liveFetch("/__im/state");
     window.__kpaoHeartbeat?.();
     setDataSource("真实数据 · " + hm(Date.now()));
@@ -524,7 +537,7 @@
       if (data.convId) location.hash = "#/chat/" + encodeURIComponent(data.convId);
       resumeLive();
     });
-    navigator.serviceWorker.register("/__proto/sw.js?v=20261118z25", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
+    navigator.serviceWorker.register("/__proto/sw.js?v=20261122g", { scope: "/__proto/" }).then((registration) => registration.update()).catch(() => {});
   }
 
   function updateNotifyUI() {
@@ -1308,9 +1321,10 @@
     }));
   }
 
-  async function liveLoadChat(id, force) {
+  async function liveLoadChat(id, force, token) {
     try {
       const data = await liveFetch("/__im/chat?id=" + encodeURIComponent(id));
+      if (token !== undefined && token !== state.chatToken) return;
       const messages = liveMessages(data.items ?? []);
       if (data.kind === "bot" && messages.length > 0) {
         // 私聊里 Bot 消息没有 sender 字段：就是当前会话的 Bot
@@ -1336,9 +1350,25 @@
       const preserved = (state.messages[id] ?? []).filter(
         (item) => seqOf(item) < minNew && !messages.some((next) => next.id === item.id)
       );
-      state.messages[id] = [...preserved, ...messages].filter(
+      // Bot 正在跑的时候补发的消息，DSH 要等这一轮结束才落盘；
+      // 而乐观插入的消息 id 是时间戳，seq 比任何服务端消息都大，刷新时会被整个过滤掉，
+      // 表现就是「发出去就在对话框里消失了」。这里单独保留，
+      // 直到服务端出现同样内容的消息（说明已落盘），或者超过 10 分钟。
+      const normalizeText = (value) => String(value ?? "").replace(/\s+/gu, " ").trim().slice(0, 40);
+      const remoteMine = new Set(
+        messages.filter((item) => item.from === "me").map((item) => normalizeText(item.text))
+      );
+      const nowMs = Date.now();
+      const stillLocal = (state.messages[id] ?? []).filter(
+        (item) =>
+          item.local === true &&
+          nowMs - Number(item.localAt ?? 0) < 600_000 &&
+          !remoteMine.has(normalizeText(item.text))
+      );
+      state.messages[id] = [...preserved, ...messages, ...stillLocal].filter(
         (message) => message.id !== "loading"
       );
+      if (state.messages[id].length > 120) state.messages[id] = state.messages[id].slice(-120);
       const pendingAt = state.pendingRuns?.[id];
       if (pendingAt) {
         const last = messages.at(-1);
@@ -1585,6 +1615,51 @@
     }
   }
 
+  function fmtSize(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? "").split(",")[1] ?? "");
+      reader.onerror = () => reject(new Error("读取文件失败"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /** 任意文件（压缩包、文档、音频…）：原样传，不做压缩。 */
+  async function sendFile(file) {
+    const chatId = state.chatId;
+    if (!chatId) return;
+    if (!state.live) {
+      showToast("本地演示模式，未上传");
+      return;
+    }
+    const limit = 10 * 1024 * 1024;
+    if (file.size > limit) {
+      showToast("文件太大，上限 10MB");
+      return;
+    }
+    showToast("正在上传文件…");
+    try {
+      const base64 = await fileToBase64(file);
+      const uploaded = await liveFetch("/__im/upload", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: file.name, mime: file.type || "application/octet-stream", data: base64 })
+      });
+      state.pendingFile = { path: uploaded.path, name: uploaded.name || file.name, size: file.size };
+      renderPendingImage();
+      showToast("文件已就绪，输入文字后一起发送");
+    } catch (error) {
+      showToast("文件上传失败：" + error.message);
+    }
+  }
+
   function updateComposerSend() {
     const running = isCurrentRunning();
     if (el.stopBtn) el.stopBtn.hidden = !running;
@@ -1592,7 +1667,7 @@
     el.sendBtn.innerHTML = '<svg class="ic"><use href="#i-send"/></svg>';
     const hasText = el.composerInput.value.trim().length > 0;
     // 任务在跑时也允许发消息：这就是「插话」，会走和电脑端一样的 send / queue 逻辑。
-    el.sendBtn.disabled = !(hasText || state.pendingImage);
+    el.sendBtn.disabled = !(hasText || state.pendingImage || state.pendingFile);
   }
 
   function isCurrentRunning() {
@@ -1621,11 +1696,20 @@
     const box = el.pendingImage;
     const thumb = el.pendingImageThumb;
     if (!box || !thumb) return;
+    const label = box.querySelector(".pending-image-text");
     if (state.pendingImage) {
       box.hidden = false;
+      thumb.hidden = false;
       thumb.src = "/__im/files?path=" + encodeURIComponent(state.pendingImage);
+      if (label) label.textContent = "图片已就绪，可加文字一起发";
+    } else if (state.pendingFile) {
+      box.hidden = false;
+      thumb.hidden = true;
+      thumb.removeAttribute("src");
+      if (label) label.textContent = state.pendingFile.name + " · " + fmtSize(state.pendingFile.size);
     } else {
       box.hidden = true;
+      thumb.hidden = false;
       thumb.removeAttribute("src");
     }
     updateComposerSend();
@@ -1633,6 +1717,7 @@
 
   function clearPendingImage() {
     state.pendingImage = null;
+    state.pendingFile = null;
     renderPendingImage();
   }
 
@@ -1937,6 +2022,8 @@
       }
     }
     state.chatId = id;
+    state.chatToken = (state.chatToken ?? 0) + 1;
+    const chatToken = state.chatToken;
     conv.unread = 0;
     // 切换会话时立刻清掉上一个会话的过程/产物，避免异步响应串台。
     state.traceToken = (state.traceToken ?? 0) + 1;
@@ -1950,7 +2037,7 @@
       if (!state.messages[id]) {
         state.messages[id] = [{ id: "loading", from: "system", time: "", type: "system", text: "正在加载消息…" }];
       }
-      liveLoadChat(id);
+      liveLoadChat(id, false, chatToken);
     }
     if (el.mentionBtn) el.mentionBtn.hidden = conv.kind !== "group";
     el.composerInput.placeholder = conv.kind === "group" ? "发消息，@ 指定 Agent…" : "发消息…";
@@ -2017,6 +2104,7 @@
 
   function closeChat() {
     state.chatId = null;
+    state.chatToken = (state.chatToken ?? 0) + 1;
     el.chatView.classList.remove("is-open");
     el.chatView.setAttribute("aria-hidden", "true");
   }
@@ -2051,6 +2139,14 @@
 
   function inlineMarkdown(html) {
     html = markdownImages(html);
+    // 【文件】uploads/xxx.zip → 可点的下载链接，别让用户看着一串路径
+    html = html.replace(
+      /【文件】\s*(uploads\/[^\s<`]+)/gu,
+      (_match, rel) =>
+        `<a class="msg-file" href="/__im/file?raw=1&amp;path=${encodeURIComponent(rel)}" target="_blank" rel="noreferrer">📎 ${esc(
+          decodeURIComponent(rel).split("/").pop()
+        )}</a>`
+    );
     return html
       .replace(/`([^`\n]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
@@ -2471,8 +2567,12 @@
   function sendText(raw) {
     const typed = String(raw || "").trim();
     if (!state.chatId) return;
-    if (typed === "" && !state.pendingImage) return;
-    const marker = state.pendingImage ? `【图片】${state.pendingImage}` : "";
+    if (typed === "" && !state.pendingImage && !state.pendingFile) return;
+    const marker = state.pendingImage
+      ? `【图片】${state.pendingImage}`
+      : state.pendingFile
+        ? `【文件】${state.pendingFile.path}`
+        : "";
     const text = [typed, marker].filter(Boolean).join("\n");
     const outboundText = expandMentions(text, convById(state.chatId));
     if (text.length > 1000000) {
@@ -2480,11 +2580,13 @@
       return;
     }
     state.pendingImage = null;
+    state.pendingFile = null;
     renderPendingImage();
     const chatId = state.chatId;
     const conv = convById(chatId);
 
-    pushMessage({ id: "m" + Date.now(), from: "me", time: nowHM(), type: "text", text });
+    const localId = "m" + Date.now();
+    pushMessage({ id: localId, from: "me", time: nowHM(), type: "text", text, local: true, localAt: Date.now() });
     renderMessages();
     scrollChatToBottom("smooth");
     resetComposer();
@@ -2502,6 +2604,9 @@
       updateLiveStatus();
       liveSend(chatId, outboundText).catch((error) => {
         delete state.pendingRuns[chatId];
+        // 没发出去就别把它留在气泡里冒充已发送
+        state.messages[chatId] = (state.messages[chatId] ?? []).filter((msg) => msg.id !== localId);
+        renderMessages();
         updateLiveStatus();
         showToast("发送失败：" + error.message);
       });
@@ -3388,6 +3493,8 @@
         void openBilling();
       } else if (act === "open-attachments") {
         openComposerMenu();
+      } else if (act === "pick-file") {
+        if (el.fileInput) el.fileInput.click();
       } else if (act === "open-files") {
         void openWorkspaceFiles("");
       } else if (act === "open-jobs") {
@@ -3592,6 +3699,14 @@
       });
       el.chatScroll.addEventListener("pointerup", clearMessagePress);
       el.chatScroll.addEventListener("pointercancel", clearMessagePress);
+    }
+
+    if (el.fileInput) {
+      el.fileInput.addEventListener("change", async () => {
+        const file = el.fileInput.files?.[0];
+        el.fileInput.value = "";
+        if (file) await sendFile(file);
+      });
     }
 
     if (el.imageInput) {
@@ -4210,8 +4325,7 @@
     // 只保留已经能打开真实数据/动作的入口；不能实际工作的预设不再展示。
     const tools = [
       ["i-usage", "用量", "open-billing"],
-      ["i-plus", "附件", "open-attachments"],
-      ["i-folder", "文件", "open-files"],
+      ["i-plus", "图片", "open-attachments"],
       ["i-task", "任务板", "open-jobs"],
       ["i-doc", "产物", "deliverables"]
     ];
@@ -4364,19 +4478,15 @@
 
   function openComposerMenu() {
     openSheet(`<h3>添加内容</h3>
-      <p class="sheet-sub">原型只演示入口，正式版再接文件 / 图片 / 语音。</p>
+      <p class="sheet-sub">图片会压缩后上传；文件（压缩包、文档等）原样上传，上限 10MB。</p>
       <div class="group-card">
         <button class="menu-row" data-act="pick-image">
           <span class="menu-ic ic-content"><svg class="ic"><use href="#i-doc"/></svg></span>
           <span class="menu-label">图片 / 截图<span class="menu-sub">从相册选，上传后作为消息发出</span></span>
         </button>
-        <button class="menu-row" data-act="toast" data-toast="文件（原型占位）">
+        <button class="menu-row" data-act="pick-file">
           <span class="menu-ic ic-project"><svg class="ic"><use href="#i-folder"/></svg></span>
-          <span class="menu-label">文件<span class="menu-sub">交付物、数据、素材</span></span>
-        </button>
-        <button class="menu-row" data-act="toast" data-toast="语音（原型占位）">
-          <span class="menu-ic ic-research"><svg class="ic"><use href="#i-bell"/></svg></span>
-          <span class="menu-label">语音输入<span class="menu-sub">口述素材会转文字</span></span>
+          <span class="menu-label">文件<span class="menu-sub">压缩包、PDF、音频…原样上传</span></span>
         </button>
       </div>
       <div style="height:10px"></div>
@@ -4477,6 +4587,9 @@
 
   function resumeLive() {
     if (document.hidden) return;
+    // 只有真从后台回来才刷新。聊天页进出/键盘 focus 不触发整页 state 重载。
+    if (state.wasHidden !== true) return;
+    state.wasHidden = false;
     const now = Date.now();
     if (now - state.lastResumeAt < 1200) return;
     state.lastResumeAt = now;
@@ -4484,9 +4597,13 @@
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) resumeLive();
+    if (document.hidden) state.wasHidden = true;
+    else resumeLive();
   });
-  window.addEventListener("focus", resumeLive);
+  window.addEventListener("focus", () => {
+    // iOS 的 focus 也可能只是输入框/地址栏变化；visibilitychange 才是后台恢复信号。
+    if (state.wasHidden === true) resumeLive();
+  });
 
   function init() {
     try {

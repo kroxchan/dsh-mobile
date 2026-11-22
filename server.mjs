@@ -41,7 +41,7 @@ const UPSTREAM_TTL_MS = 30_000;
 /* 手机端 IM 原型（纯静态，放在 prototype/，走同一道口令门） */
 const PROTO_PREFIX = "/__proto/";
 const PROTO_DIR = path.join(DIR, "prototype");
-const PROTO_VERSION = "20261118z25";
+const PROTO_VERSION = "20261122g";
 const GUARD_PATH = path.join(DIR, "gateway-guard.js");
 const PROTO_MIME = {
   ".html": "text/html; charset=utf-8",
@@ -979,7 +979,7 @@ function teamActionItems(sessionId) {
 }
 
 function sessionLiveStatus(sessionId) {
-  const data = readSessionData(sessionId);
+  const data = { events: readSessionTail(sessionId) };
   if (data === null) return null;
   let lastStart = null;
   let lastEnd = null;
@@ -1011,8 +1011,8 @@ function sessionLiveStatus(sessionId) {
   return status;
 }
 
-function dshSessionMessages(sessionId) {
-  const data = readSessionData(sessionId);
+function dshSessionMessages(sessionId, maxBytes = 768 * 1024) {
+  const data = { events: readSessionTail(sessionId, maxBytes) };
   if (data === null) return [];
   const items = [];
   const tools = new Map();
@@ -1140,7 +1140,71 @@ function latestTurnTrace(items) {
   return items.filter((item) => (Number(item.turn) || 0) === max);
 }
 
+const traceSessionCache = new Map();
+
+/** 读取一次会话的思考/工具记录，短缓存，避免反复打开聊天时全量扫 session。 */
+function traceItemsFromSessionCached(sessionId, sender, maxAgeMs = 60000) {
+  const key = String(sessionId) + "\u0000" + String(sender ?? "");
+  const hit = traceSessionCache.get(key);
+  const now = Date.now();
+  if (hit !== undefined && now - hit.at < maxAgeMs) return hit.items;
+  const items = traceItemsFromSession(sessionId, sender);
+  traceSessionCache.set(key, { at: now, items });
+  if (traceSessionCache.size > 32) {
+    const oldest = [...traceSessionCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+    if (oldest) traceSessionCache.delete(oldest[0]);
+  }
+  return items;
+}
+
+const traceTailCache = new Map();
+
+/** 只读会话日志末尾几 MB，够拿到最近一轮的思考/工具事件，避免扫 14MB 全量。 */
+function readSessionTail(sessionId, maxBytes = 768 * 1024) {
+  const dirs = fs.existsSync(SESSION_ROOT) ? fs.readdirSync(SESSION_ROOT) : [];
+  for (const dir of dirs) {
+    const file = path.join(SESSION_ROOT, dir, sessionId, "session.v4.jsonl.zstd");
+    let stat;
+    try { stat = fs.statSync(file); } catch { continue; }
+    const cacheKey = file + ":" + maxBytes;
+    const cached = traceTailCache.get(cacheKey);
+    if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) return cached.events;
+    const start = Math.max(0, stat.size - maxBytes);
+    const raw = fs.readFileSync(file).subarray(start);
+    const magic = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+    const first = raw.indexOf(magic);
+    if (first < 0) return [];
+    const body = raw.subarray(first);
+    const positions = [];
+    let at = 0;
+    while ((at = body.indexOf(magic, at)) !== -1) { positions.push(at); at += 4; }
+    let text = "";
+    for (let index = 0; index < positions.length; index += 1) {
+      const end = index + 1 < positions.length ? positions[index + 1] : body.length;
+      try { text += zlib.zstdDecompressSync(body.subarray(positions[index], end)).toString("utf8"); } catch {}
+    }
+    const events = [];
+    for (const line of text.split("\n")) {
+      if (line === "") continue;
+      try { events.push(JSON.parse(line)); } catch {}
+    }
+    traceTailCache.set(cacheKey, { mtime: stat.mtimeMs, size: stat.size, events });
+    if (traceTailCache.size > 16) {
+      const oldest = [...traceTailCache.entries()].sort((a,b)=>a[1].mtime-b[1].mtime)[0];
+      if (oldest) traceTailCache.delete(oldest[0]);
+    }
+    return events;
+  }
+  return [];
+}
+
 function traceItemsFromSession(sessionId, sender) {
+  return dshSessionMessages(sessionId, 2 * 1024 * 1024)
+    .filter((item) => item.kind === "thinking" || item.kind === "tool")
+    .map((item) => ({ ...item, sender: sender ?? item.sender ?? "DSH Agent" }));
+}
+
+function _traceItemsFromSessionFull(sessionId, sender) {
   return dshSessionMessages(sessionId)
     .filter((item) => item.kind === "thinking" || item.kind === "tool")
     .map((item) => ({ ...item, sender: sender ?? item.sender ?? "DSH Agent" }));
@@ -1415,7 +1479,7 @@ function isSystemInjected(text) {
 
 /** 读群聊：群自己的 Session 里，成员发言是 role=post 的消息，用户发言无 role。 */
 function roomMessagesFromSession(sessionId) {
-  const data = readSessionData(sessionId);
+  const data = { events: readSessionTail(sessionId) };
   if (data === null) return [];
   const items = [];
   for (const event of data.events) {
@@ -1563,12 +1627,69 @@ function pushCompletionPreview(sessionId) {
   }
 }
 
+/* 任务板那一行写「用户让它干什么」，而不是 Bot 最后吐的半句话。 */
+function taskBoardTitle(sessionId) {
+  try {
+    const messages = dshSessionMessages(sessionId);
+    const last = [...messages].reverse().find((item) => item.kind === "me" && String(item.text || "").trim() !== "");
+    if (!last) return "";
+    return String(last.text).replace(/\s+/gu, " ").trim().slice(0, 80);
+  } catch {
+    return "";
+  }
+}
+
+/* 任务板自动记录：Bot/群每跑完一轮就追加一行 completed。
+ * 以前这块完全靠 Chief 手写，任务板从 11-05 之后就没动过，「今日完成」自然永远是 0。
+ * 只追加表格行，不碰表头和正文；序号按当天已有最大号 +1；同一会话 90 秒内只记一次。
+ */
+const recentCompletions = new Map();
+
+function appendTaskBoardCompletion({ name, sessionId, preview }) {
+  try {
+    const key = String(sessionId ?? "");
+    const now = Date.now();
+    if (key !== "" && now - Number(recentCompletions.get(key) ?? 0) < 90_000) return;
+    let text;
+    try {
+      text = fs.readFileSync(TASK_BOARD_PATH, "utf8");
+    } catch {
+      return;
+    }
+    const stamp = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+    const ymd = `${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}`;
+    const dateOnly = `${stamp.getFullYear()}-${pad(stamp.getMonth() + 1)}-${pad(stamp.getDate())}`;
+    const lines = text.split("\n");
+    let seq = 0;
+    let insertAt = -1;
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = lines[index].match(/^\|\s*T-(\d{8})-(\d{2})\s*\|/u);
+      if (match === null) continue;
+      insertAt = index;
+      if (match[1] === ymd) seq = Math.max(seq, Number(match[2]));
+    }
+    const id = `T-${ymd}-${pad(seq + 1)}`;
+    const clean = (value) => String(value ?? "").replace(/[|\r\n]+/gu, " ").replace(/\s+/gu, " ").trim();
+    const title = clean(preview).slice(0, 60) || "已完成";
+    const row = `| ${id} | ${title} | 自动记录 | ${clean(name) || "会话"} | completed | — | — | — | — | ${dateOnly} |`;
+    if (insertAt === -1) lines.push(row);
+    else lines.splice(insertAt + 1, 0, row);
+    fs.writeFileSync(TASK_BOARD_PATH, lines.join("\n"), "utf8");
+    if (key !== "") recentCompletions.set(key, now);
+    log(`taskboard +${id} ${name} ${title.slice(0, 24)}`);
+  } catch (error) {
+    log(`taskboard write failed: ${String(error?.message ?? error)}`);
+  }
+}
+
 async function checkPushCompletions() {
-  if (readPushSubscriptions().length === 0) return;
+  // 没有 push 订阅也要跑：任务板记录不依赖通知通道
   await refreshBotStateNow();
     const result = await botStateCached(1000);
   if (!result || result.ok !== true) return;
   const { running, names, sessionIds } = collectPushRunning(result.value ?? {});
+  const siriBotName = String(config.siriTarget ?? "").trim();
   if (pushRunning !== null) {
     for (const id of pushRunning) {
       if (running.has(id)) continue;
@@ -1579,6 +1700,10 @@ async function checkPushCompletions() {
         preview = pushCompletionPreview(sessionIds.get(id) || id);
       }
       log(`push completion ${name} ${id}`);
+      // Siri 的一问一答不是「任务」，不往任务板里塞
+      if (siriBotName !== "" && name === siriBotName) continue;
+      const sid = sessionIds.get(id) || id;
+      appendTaskBoardCompletion({ name, sessionId: sid, preview: taskBoardTitle(sid) || preview });
       await sendPushNotification({ title: "任务完成", body: `${name} · ${preview || "已完成"}`, convId: id, tag: id });
     }
   }
@@ -1587,8 +1712,11 @@ async function checkPushCompletions() {
 
 function startPushWatcher() {
   if (pushTimer !== null) return;
-  pushTimer = setInterval(() => { void checkPushCompletions(); }, 8000);
+  // 3 秒一轮：任务经常 5 秒就结束，8 秒间隔会整段漏过去（基线里从没出现过 running）。
+  pushTimer = setInterval(() => { void checkPushCompletions(); }, 3000);
   if (typeof pushTimer.unref === "function") pushTimer.unref();
+  // 启动时先建一次基线，避免「重启后第一个任务永远不被记录」
+  void checkPushCompletions();
 }
 
 async function serveIm(req, res, url) {
@@ -1596,7 +1724,7 @@ async function serveIm(req, res, url) {
   log(`im ${req.method} ${pathname} ua=${String(req.headers["user-agent"] ?? "").slice(0, 70)}`);
   try {
     if (pathname === "/__im/state" && req.method === "GET") {
-      const result = await botStateCached(800);
+      const result = await botStateCached(8000);
       if (!result.ok) {
         jsonResponse(res, 502, { ok: false, error: result.error ?? { message: "state failed" } });
         return;
@@ -2053,7 +2181,7 @@ async function serveIm(req, res, url) {
           seq: item.seq ?? 0,
         })).filter((item) => item.text !== ""));
         const nextCursor = result.value?.cursor ?? null;
-        const workState = await botStateCached(3000);
+        const workState = await botStateCached(8000);
         const botWork = workState.value?.work?.bots?.[id] ?? null;
         // 让 Bot 之间的派活 / 群内发帖在聊天里以系统提示显示
         let actionMsgs = [];
@@ -2172,21 +2300,24 @@ async function serveIm(req, res, url) {
       const raw = await readBody(req, 16 * 1024 * 1024);
       const body = JSON.parse(raw || "{}");
       const mime = String(body.mime ?? "");
-      if (!mime.startsWith("image/")) {
-        jsonResponse(res, 400, { ok: false, error: { message: "只支持图片" } });
-        return;
-      }
+      // 不再只收图片：压缩包、PDF、音频这些也要能发（单文件 10MB 上限）
       const buffer = Buffer.from(String(body.data ?? ""), "base64");
       if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
-        jsonResponse(res, 400, { ok: false, error: { message: "图片为空或超过 10MB" } });
+        jsonResponse(res, 400, { ok: false, error: { message: "文件为空或超过 10MB" } });
         return;
       }
       const dir = path.join(DSH_HOME, "bot", "workspace", "uploads");
       fs.mkdirSync(dir, { recursive: true });
-      const ext = (mime.split("/")[1] ?? "png").replace(/[^a-z0-9]/gi, "") || "png";
+      const original = String(body.name ?? "")
+        .replace(/[\\/:*?"<>|]+/gu, "_")
+        .trim()
+        .slice(-60);
+      const extFromName = (/\.[A-Za-z0-9]{1,8}$/u.exec(original)?.[0] ?? "").replace(/^\./u, "");
+      const extFromMime = mime.includes("/") ? mime.split("/")[1].replace(/[^a-z0-9]/gi, "") : "";
+      const ext = (extFromName || extFromMime || "bin").toLowerCase().slice(0, 10);
       const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       fs.writeFileSync(path.join(dir, name), buffer);
-      jsonResponse(res, 200, { ok: true, path: `uploads/${name}`, name });
+      jsonResponse(res, 200, { ok: true, path: `uploads/${name}`, name: original || name, size: buffer.length });
       return;
     }
 
@@ -2200,7 +2331,7 @@ async function serveIm(req, res, url) {
       const limit = limitRaw === null || limitRaw.trim() === ""
         ? 60
         : Math.min(120, Math.max(10, Number(limitRaw) || 60));
-      const stateResult = await botStateCached(3000);
+      const stateResult = await botStateCached(8000);
       const bots = listOf(stateResult.value?.bots);
       const bot = bots.find((item) => item.id === id);
       const room = listOf(stateResult.value?.rooms).find((item) => item.id === id);
@@ -2209,13 +2340,13 @@ async function serveIm(req, res, url) {
         const members = Array.isArray(room.members) ? room.members : [];
         for (const memberId of members) {
           const member = bots.find((item) => item.id === memberId);
-          if (member?.sessionId) items.push(...latestTurnTrace(traceItemsFromSession(member.sessionId, member.name)));
+          if (member?.sessionId) items.push(...latestTurnTrace(traceItemsFromSessionCached(member.sessionId, member.name)));
         }
         items.sort((a, b) => (Number(a.time) || 0) - (Number(b.time) || 0));
       } else if (bot !== undefined) {
-        if (bot.sessionId) items = latestTurnTrace(traceItemsFromSession(bot.sessionId, bot.name));
+        if (bot.sessionId) items = latestTurnTrace(traceItemsFromSessionCached(bot.sessionId, bot.name));
       } else {
-        items = latestTurnTrace(traceItemsFromSession(id, "DSH Agent"));
+        items = latestTurnTrace(traceItemsFromSessionCached(id, "DSH Agent"));
       }
       let liveSession = "";
       let liveSender = "DSH Agent";
@@ -2247,7 +2378,7 @@ async function serveIm(req, res, url) {
         jsonResponse(res, 400, { ok: false, error: { message: "缺少 id" } });
         return;
       }
-      const stateResult = await botStateCached(3000);
+      const stateResult = await botStateCached(8000);
       const bot = listOf(stateResult.value?.bots).find((item) => item.id === id);
       const room = listOf(stateResult.value?.rooms).find((item) => item.id === id);
       const sessionId = bot?.sessionId ?? room?.sessionId ?? id;
@@ -2772,12 +2903,18 @@ const siriApi = createSiriApi({
   token: SIRI_TOKEN,
   version: PROTO_VERSION,
   defaultTarget: String(config.siriTarget ?? ""),
+  sendPush: sendPushNotification,
+  pushCount: () => readPushSubscriptions().length,
   log,
 });
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
-  if (url.pathname === "/api/siri" || url.pathname.startsWith("/api/siri/")) {
+  if (
+    url.pathname === "/api/siri" ||
+    url.pathname.startsWith("/api/siri/") ||
+    /^\/s\/[A-Za-z0-9_-]{16,}$/u.test(url.pathname)
+  ) {
     void siriApi.handle(req, res, url).catch((error) => {
       log(`[siri] 处理失败：${error?.message ?? error}`);
       if (!res.headersSent) jsonResponse(res, 500, { ok: false, error: { message: "服务端异常" } });
@@ -2923,6 +3060,8 @@ server.on("clientError", (error, socket) => {
 
 server.listen(LISTEN_PORT, "::", () => {
   log(`网关已启动 http://127.0.0.1:${LISTEN_PORT}，上游自动发现（提示端口 ${HINT_PORT}）`);
+  // 先把上游和 state 缓存热起来，避免第一次打开 PWA 时等 5-20 秒。
+  void ensureUpstream().then(() => botStateCached(0)).catch(() => {});
   connectRemoteEvents();
   startPushWatcher();
 });
